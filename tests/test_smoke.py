@@ -5,6 +5,7 @@ from reservoir.data import hydrology_simulation_series
 from reservoir.experiment import generate_synthetic_dataset, run_benchmark
 from reservoir.gpr import RunoffGPRForecaster
 from reservoir.mpc import MPCScheduler
+from reservoir.product import preflight_environment, product_presets
 
 
 def test_pipeline_smoke():
@@ -40,3 +41,10 @@ def test_data_validation():
 
     with pytest.raises(ValueError):
         run_benchmark(generate_synthetic_dataset(160, seed=1))
+
+
+def test_product_presets_and_preflight_shape():
+    presets = product_presets()
+    assert len(presets) >= 3
+    env = preflight_environment()
+    assert "numpy" in env and "streamlit" in env

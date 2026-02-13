@@ -3,14 +3,18 @@
 
 from __future__ import annotations
 
+import importlib.util
 import subprocess
 import sys
 
 
 def main():
+    if importlib.util.find_spec("streamlit") is None:
+        print("[ERROR] streamlit is not installed. Please run: pip install -r requirements.txt")
+        return 1
     cmd = [sys.executable, "-m", "streamlit", "run", "app.py"]
-    raise SystemExit(subprocess.call(cmd))
+    return subprocess.call(cmd)
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
