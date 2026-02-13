@@ -8,12 +8,12 @@ import pandas as pd
 
 from .baselines import dp_baseline, rule_baseline
 from .config import MPCConfig, ReservoirConfig
-from .data import synthetic_runoff_series
+from .data import hydrology_simulation_series, synthetic_runoff_series
 from .eval import summarize_run
 from .gpr import RunoffGPRForecaster
 from .mpc import MPCScheduler
 
-ALLOWED_SCENARIOS = {"mixed", "wet", "dry", "extreme", "climate_trend"}
+ALLOWED_SCENARIOS = {"mixed", "wet", "dry", "extreme", "climate_trend", "hydro_physics"}
 
 
 @dataclass
@@ -29,6 +29,9 @@ def generate_synthetic_dataset(n_steps: int, seed: int, scenario: str = "mixed")
         raise ValueError("n_steps should be >= 120 for stable train/test and lag features")
     if scenario not in ALLOWED_SCENARIOS:
         raise ValueError(f"unsupported scenario={scenario}; expected one of {sorted(ALLOWED_SCENARIOS)}")
+
+    if scenario == "hydro_physics":
+        return hydrology_simulation_series(n_steps=n_steps, seed=seed, scenario="mixed")
 
     df = synthetic_runoff_series(n_steps=n_steps, seed=seed)
     q = df["qin"].to_numpy()

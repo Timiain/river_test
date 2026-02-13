@@ -1,6 +1,7 @@
 import pytest
 
 from reservoir.config import MPCConfig, ReservoirConfig
+from reservoir.data import hydrology_simulation_series
 from reservoir.experiment import generate_synthetic_dataset, run_benchmark
 from reservoir.gpr import RunoffGPRForecaster
 from reservoir.mpc import MPCScheduler
@@ -20,6 +21,14 @@ def test_benchmark_smoke():
     df = generate_synthetic_dataset(280, seed=1, scenario="extreme")
     bundle = run_benchmark(df, cfg=ReservoirConfig(), mpc_cfg=MPCConfig(pred_horizon_h=24, step_h=2))
     assert set(bundle.metrics["method"]) == {"Rule", "DP", "HOSM+FWCR+MPC"}
+
+
+def test_hydrology_simulator_columns_and_range():
+    df = hydrology_simulation_series(240, seed=7)
+    expected = {"precip_mm_h", "et0_mm_h", "soil_mm", "quickflow", "baseflow", "qin"}
+    assert expected.issubset(set(df.columns))
+    assert float(df["qin"].min()) >= 0
+    assert float(df["soil_mm"].min()) >= 0
 
 
 def test_data_validation():

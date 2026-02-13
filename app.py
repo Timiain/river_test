@@ -25,7 +25,7 @@ with st.sidebar:
     st.header("⚙️ 场景与算法参数")
     n_steps = st.slider("模拟总时长（小时）", min_value=240, max_value=24 * 240, value=24 * 90, step=24)
     seed = st.number_input("随机种子", min_value=0, value=42, step=1)
-    scenario = st.selectbox("水文场景", ["mixed", "wet", "dry", "extreme", "climate_trend"])
+    scenario = st.selectbox("水文场景", ["mixed", "wet", "dry", "extreme", "climate_trend", "hydro_physics"])
     fwcr_threshold = st.slider("FWCR阈值 (m³/s)", min_value=8000, max_value=20000, value=14000, step=500)
     pred_h = st.select_slider("MPC预测时域 (h)", options=[24, 36, 48], value=36)
     step_h = st.select_slider("MPC决策步长 (h)", options=[1, 2, 3], value=2)

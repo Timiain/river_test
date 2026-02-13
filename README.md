@@ -8,6 +8,7 @@
 5. 基线方法（规则法、离散DP）
 6. PPO强化学习训练脚本（用于基准增强）
 7. 可视化演示应用（支持点击生成模拟数据、运行算法与对比基线）
+8. 水文专家导向的概念性降雨-径流模拟器（快流+基流+汇流）
 
 ## 快速开始
 ```bash
@@ -17,6 +18,16 @@ python scripts/run_experiments.py --data experiments/runoff.csv
 python scripts/run_sensitivity.py
 python scripts/train_rl.py
 ```
+
+## 水文模拟器（推荐用于算法管理效果模拟）
+```bash
+python scripts/simulate_hydrology.py --n_steps 2880 --scenario mixed --out experiments/hydro_sim.csv
+python scripts/run_experiments.py --data experiments/hydro_sim.csv
+```
+说明：
+- `simulate_hydrology.py` 会输出包含 `precip_mm_h / et0_mm_h / soil_mm / quickflow / baseflow / qin` 的时序数据。
+- 可用于更“物理过程友好”的调度算法验证，而非仅依赖统计合成流量。
+- 在可视化面板中可选择 `hydro_physics` 场景，一键执行管理效果对比。
 
 ## 可视化展示应用（产品化入口）
 方式1：

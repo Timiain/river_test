@@ -9,7 +9,7 @@ def main():
     p = argparse.ArgumentParser(description="Generate synthetic runoff data for reservoir scheduling experiments")
     p.add_argument("--n_steps", type=int, default=24 * 120)
     p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--scenario", type=str, default="mixed", choices=["mixed", "wet", "dry", "extreme", "climate_trend"])
+    p.add_argument("--scenario", type=str, default="mixed", choices=["mixed", "wet", "dry", "extreme", "climate_trend", "hydro_physics"])
     p.add_argument("--out", type=str, default="experiments/runoff.csv")
     args = p.parse_args()
 
