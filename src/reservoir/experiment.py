@@ -13,6 +13,8 @@ from .eval import summarize_run
 from .gpr import RunoffGPRForecaster
 from .mpc import MPCScheduler
 
+ALLOWED_SCENARIOS = {"mixed", "wet", "dry", "extreme", "climate_trend"}
+
 
 @dataclass
 class ExperimentBundle:
@@ -23,6 +25,11 @@ class ExperimentBundle:
 
 
 def generate_synthetic_dataset(n_steps: int, seed: int, scenario: str = "mixed") -> pd.DataFrame:
+    if n_steps < 120:
+        raise ValueError("n_steps should be >= 120 for stable train/test and lag features")
+    if scenario not in ALLOWED_SCENARIOS:
+        raise ValueError(f"unsupported scenario={scenario}; expected one of {sorted(ALLOWED_SCENARIOS)}")
+
     df = synthetic_runoff_series(n_steps=n_steps, seed=seed)
     q = df["qin"].to_numpy()
     t = np.arange(len(q))
@@ -39,10 +46,16 @@ def generate_synthetic_dataset(n_steps: int, seed: int, scenario: str = "mixed")
 
 
 def run_benchmark(df: pd.DataFrame, cfg: ReservoirConfig | None = None, mpc_cfg: MPCConfig | None = None) -> ExperimentBundle:
+    if "qin" not in df.columns:
+        raise ValueError("input dataframe must include 'qin' column")
+
     cfg = cfg or ReservoirConfig()
     mpc_cfg = mpc_cfg or MPCConfig(pred_horizon_h=36, step_h=2, feedback_k=1.0)
 
     qin = df["qin"].to_numpy(dtype=float)
+    if len(qin) < 180:
+        raise ValueError("dataset too short; need at least 180 steps")
+
     split = int(len(qin) * 0.7)
     train, test = qin[:split], qin[split:]
 

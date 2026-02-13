@@ -34,3 +34,15 @@ streamlit run app.py
 - 输出表格指标与曲线图，并可下载CSV
 
 实验输出位于 `experiments/results/`。
+
+## 测试审查建议（正确性与易用性）
+```bash
+python -m compileall src scripts app.py tests
+PYTHONPATH=src pytest -q
+python scripts/run_experiments.py --data experiments/runoff.csv
+python scripts/run_sensitivity.py --data experiments/runoff.csv
+```
+建议重点关注：
+- `metrics.csv` 中 `peak_shaving`、`energy`、`runtime_s` 的相对排序是否符合预期
+- `release_compare.png` 是否出现明显异常（剧烈振荡、物理越界）
+- 不同 `FWCR` 阈值与预测时域下结果是否呈现稳定趋势

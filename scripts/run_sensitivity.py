@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import argparse
 import itertools
 from pathlib import Path
 
@@ -11,7 +12,12 @@ from reservoir.mpc import MPCScheduler
 
 
 def main():
-    data = pd.read_csv("experiments/runoff.csv")
+    p = argparse.ArgumentParser(description="Sensitivity analysis for MPC horizon/step/FWCR threshold")
+    p.add_argument("--data", type=str, default="experiments/runoff.csv")
+    p.add_argument("--out", type=str, default="experiments/results/sensitivity.csv")
+    args = p.parse_args()
+
+    data = pd.read_csv(args.data)
     q = data["qin"].values
     split = int(0.7 * len(q))
     train, test = q[:split], q[split:]
@@ -27,10 +33,13 @@ def main():
         s = summarize_run("mpc", test, out)
         s.update({"pred_h": ph, "step_h": step, "threshold": th})
         rows.append(s)
-    res = pd.DataFrame(rows)
-    Path("experiments/results").mkdir(parents=True, exist_ok=True)
-    res.to_csv("experiments/results/sensitivity.csv", index=False)
-    print(res.sort_values("peak_shaving", ascending=False).head(10))
+
+    res = pd.DataFrame(rows).sort_values("peak_shaving", ascending=False)
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    res.to_csv(out, index=False)
+    print(res.head(10))
+    print(f"saved {out}")
 
 
 if __name__ == "__main__":
