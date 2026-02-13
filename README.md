@@ -69,3 +69,14 @@ python scripts/run_sensitivity.py --data experiments/runoff.csv
 - 不同 `FWCR` 阈值与预测时域下结果是否呈现稳定趋势
 
 实验输出位于 `experiments/results/`。
+
+## 上线前测试建议（资深测试开发）
+```bash
+python scripts/pre_release_check.py
+# 严格模式（任一项失败即退出非0）
+python scripts/pre_release_check.py --strict
+```
+该脚本会执行：
+- 代码编译检查
+- 产品就绪度审计
+- pytest回归（在依赖不足时给出WARN）
