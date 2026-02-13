@@ -18,22 +18,21 @@ python scripts/run_sensitivity.py
 python scripts/train_rl.py
 ```
 
-## 可视化展示应用
+## 可视化展示应用（产品化入口）
+方式1：
 ```bash
 streamlit run app.py
 ```
-在页面侧边栏可调整：
-- 模拟时长、随机种子、水文情景（wet/dry/extreme 等）
-- FWCR阈值
-- MPC预测时域与决策步长
+方式2（Python启动入口）：
+```bash
+python scripts/launch_dashboard.py
+```
 
-点击“生成模拟数据并运行对比实验”后，系统会自动：
-- 生成模拟来水
-- 训练GPR并运行HOSM+FWCR+MPC
-- 与Rule/DP基线对比
-- 输出表格指标与曲线图，并可下载CSV
-
-实验输出位于 `experiments/results/`。
+控制台覆盖流程：
+- 数据生成（场景/随机种子）
+- 算法训练（GPR自动训练 + PPO手动训练入口）
+- 算法效果可视化（来水-下泄/库容）
+- 性能增长对比（相对Rule基线）
 
 ## 测试审查建议（正确性与易用性）
 ```bash
@@ -46,3 +45,5 @@ python scripts/run_sensitivity.py --data experiments/runoff.csv
 - `metrics.csv` 中 `peak_shaving`、`energy`、`runtime_s` 的相对排序是否符合预期
 - `release_compare.png` 是否出现明显异常（剧烈振荡、物理越界）
 - 不同 `FWCR` 阈值与预测时域下结果是否呈现稳定趋势
+
+实验输出位于 `experiments/results/`。
