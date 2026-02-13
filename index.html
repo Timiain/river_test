@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>三维引擎：梯级流域水资源联合调度</title>
+  <style>
+    :root {
+      --bg: #060b18;
+      --panel: #0f1b35;
+      --line: #2d426e;
+      --text: #e8f1ff;
+      --sub: #9eb5df;
+      --ok: #2ad17f;
+      --warn: #ffae52;
+      --btn: #3f8cff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--text);
+      font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: radial-gradient(1400px 900px at 20% -20%, #1f3e74 0%, #0b1428 45%, #050912 100%);
+    }
+    .app {
+      max-width: 1480px;
+      margin: 16px auto;
+      padding: 0 14px 16px;
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 12px;
+    }
+    .panel {
+      background: linear-gradient(180deg, #122145 0%, #0d1832 100%);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: 0 16px 30px rgba(0,0,0,0.35);
+    }
+    h1 { margin: 0 0 8px; font-size: 22px; }
+    h2 { margin: 0 0 6px; font-size: 15px; }
+    .desc { color: var(--sub); font-size: 12px; line-height: 1.5; margin-bottom: 10px; }
+    label { display: block; color: #d6e3ff; font-size: 12px; margin-bottom: 8px; }
+    input, select {
+      width: 100%; margin-top: 4px; border-radius: 8px; border: 1px solid #395384;
+      padding: 8px; color: #eef4ff; background: #09162f;
+    }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .btns { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 8px; }
+    button { border: 0; border-radius: 8px; padding: 10px; color: #fff; background: var(--btn); cursor: pointer; font-weight: 600; }
+    button.alt { background: #6378a5; }
+    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+    .stat { background: #112447; border: 1px solid #2c4474; border-radius: 8px; padding: 8px; }
+    .stat .k { font-size: 11px; color: var(--sub); }
+    .stat .v { font-size: 16px; font-weight: 700; margin-top: 4px; }
+
+    .right { display: grid; gap: 10px; }
+    .engine-box { padding: 8px; background: #0c1830; border: 1px solid var(--line); border-radius: 12px; }
+    #scene { width: 100%; height: 560px; display: block; border-radius: 10px; border: 1px solid #304b79; }
+    .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .chart-card { background: #0f1c39; border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
+    canvas.chart { width: 100%; height: 220px; border: 1px solid #315182; border-radius: 8px; background: #08142c; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { border-bottom: 1px solid #2a3f69; padding: 7px 6px; text-align: center; }
+    th { background: #132346; }
+    .tag { color: #fff; border-radius: 999px; font-size: 11px; padding: 2px 6px; }
+    .ok { background: var(--ok); }
+    .risk { background: var(--warn); }
+    @media (max-width: 1160px) {
+      .app { grid-template-columns: 1fr; }
+      .charts { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="panel">
+      <h1>三维引擎联合调度</h1>
+      <div class="desc">基于 Three.js 的三维场景（地形、河网、汇流、梯级水库）+ 水资源联合调度模拟。可切换季节/天气并实时查看运行指标。</div>
+
+      <label>模拟天数<input id="days" type="number" min="30" max="240" value="120" /></label>
+      <div class="row">
+        <label>季节
+          <select id="season">
+            <option value="spring">春季</option>
+            <option value="summer" selected>夏季</option>
+            <option value="autumn">秋季</option>
+            <option value="winter">冬季</option>
+          </select>
+        </label>
+        <label>天气
+          <select id="weather">
+            <option value="normal" selected>常态</option>
+            <option value="rainy">多雨</option>
+            <option value="storm">暴雨</option>
+            <option value="dry">干旱</option>
+          </select>
+        </label>
+      </div>
+      <div class="row">
+        <label>生态下泄下限<input id="ecoMin" type="number" min="30" max="200" value="88" /></label>
+        <label>防洪库容上限(%)<input id="floodCap" type="number" min="70" max="95" value="87" /></label>
+      </div>
+      <div class="row">
+        <label>策略
+          <select id="mode">
+            <option value="balanced" selected>综合均衡</option>
+            <option value="supply">供水优先</option>
+            <option value="flood">防洪优先</option>
+          </select>
+        </label>
+        <label>随机扰动<input id="noise" type="number" min="0" max="0.8" step="0.05" value="0.25" /></label>
+      </div>
+
+      <div class="btns">
+        <button id="genBtn">生成情景</button>
+        <button id="simBtn" class="alt">运行调度</button>
+      </div>
+
+      <div class="stats" id="stats"></div>
+    </aside>
+
+    <main class="right">
+      <section class="engine-box">
+        <h2>3D 流域沙盘（游戏引擎渲染）</h2>
+        <canvas id="scene"></canvas>
+      </section>
+
+      <section class="charts">
+        <div class="chart-card">
+          <h2>来水/需水/供水</h2>
+          <canvas id="flowChart" class="chart" width="520" height="240"></canvas>
+        </div>
+        <div class="chart-card">
+          <h2>三库库容率</h2>
+          <canvas id="storageChart" class="chart" width="520" height="240"></canvas>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>近10天运行日报</h2>
+        <table>
+          <thead><tr><th>日序</th><th>总入流</th><th>需水</th><th>供水</th><th>生态</th><th>防洪</th><th>天气因子</th></tr></thead>
+          <tbody id="dailyTable"></tbody>
+        </table>
+      </section>
+    </main>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'https://unpkg.com/three@0.161.0/build/three.module.js';
+    import { OrbitControls } from 'https://unpkg.com/three@0.161.0/examples/jsm/controls/OrbitControls.js';
+
+    const reservoirs = [
+      { name: '上游龙川库', cap: 680, init: 0.61, pos: new THREE.Vector3(-28, 2, -5) },
+      { name: '中游安河库', cap: 590, init: 0.56, pos: new THREE.Vector3(0, 1.5, 3) },
+      { name: '下游平原库', cap: 540, init: 0.52, pos: new THREE.Vector3(30, 0.8, 12) }
+    ];
+
+    const riverDefs = [
+      { name: '西支流', base: 155, points: [[-42, 7, -22], [-24, 4, -12], [-4, 2, 1]] },
+      { name: '北支流', base: 132, points: [[-12, 9, -30], [-6, 5, -10], [-1, 2, 0]] },
+      { name: '东支流', base: 122, points: [[42, 6, -16], [18, 4, -6], [1, 2, 0]] },
+      { name: '干流', base: 220, points: [[1, 2, 0], [16, 1, 7], [40, 0.4, 20]] }
+    ];
+
+    const seasonFactor = { spring: 1.1, summer: 1.28, autumn: 0.95, winter: 0.74 };
+    const weatherFactor = { normal: 1.0, rainy: 1.22, storm: 1.52, dry: 0.68 };
+
+    let generated = null;
+    let simulated = null;
+    let playDay = 0;
+
+    const canvas = document.getElementById('scene');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x09172f);
+    scene.fog = new THREE.Fog(0x0a1730, 70, 180);
+
+    const camera = new THREE.PerspectiveCamera(52, 2, 0.1, 400);
+    camera.position.set(34, 35, 55);
+
+    const controls = new OrbitControls(camera, canvas);
+    controls.target.set(0, 2, 0);
+    controls.enableDamping = true;
+    controls.maxPolarAngle = Math.PI * 0.48;
+
+    scene.add(new THREE.AmbientLight(0x93b7ff, 0.65));
+    const sun = new THREE.DirectionalLight(0xdbe8ff, 1.2);
+    sun.position.set(25, 45, 15);
+    scene.add(sun);
+
+    // terrain
+    const terrainGeo = new THREE.PlaneGeometry(110, 74, 120, 80);
+    const arr = terrainGeo.attributes.position;
+    for (let i = 0; i < arr.count; i++) {
+      const x = arr.getX(i), y = arr.getY(i);
+      const z = 4.6 * Math.sin(x * 0.08) * Math.cos(y * 0.11)
+        + 2.2 * Math.sin(x * 0.18 + y * 0.06)
+        - 0.12 * (x + 40);
+      arr.setZ(i, z);
+    }
+    terrainGeo.computeVertexNormals();
+    const terrainMat = new THREE.MeshStandardMaterial({
+      color: 0x55734a,
+      roughness: 0.92,
+      metalness: 0.05,
+      flatShading: false
+    });
+    const terrain = new THREE.Mesh(terrainGeo, terrainMat);
+    terrain.rotation.x = -Math.PI / 2;
+    terrain.position.y = -2.2;
+    scene.add(terrain);
+
+    // contour helper (gives gradient/topography feel)
+    const contour = new THREE.GridHelper(108, 24, 0x9bb4e8, 0x3a4d75);
+    contour.position.y = -1.98;
+    contour.material.opacity = 0.25;
+    contour.material.transparent = true;
+    scene.add(contour);
+
+    // river meshes
+    const riverMeshes = [];
+    const particles = [];
+    riverDefs.forEach((r, idx) => {
+      const pts = r.points.map(p => new THREE.Vector3(p[0], p[1], p[2]));
+      const curve = new THREE.CatmullRomCurve3(pts);
+      const tube = new THREE.TubeGeometry(curve, 60, 0.8 + idx * 0.1, 12, false);
+      const mat = new THREE.MeshStandardMaterial({ color: 0x48b4ff, emissive: 0x114477, roughness: 0.35, metalness: 0.1 });
+      const mesh = new THREE.Mesh(tube, mat);
+      scene.add(mesh);
+      riverMeshes.push({ curve, mesh });
+
+      const pGeo = new THREE.SphereGeometry(0.32, 10, 10);
+      const pMat = new THREE.MeshBasicMaterial({ color: 0xbff3ff });
+      for (let k = 0; k < 8; k++) {
+        const dot = new THREE.Mesh(pGeo, pMat);
+        scene.add(dot);
+        particles.push({ dot, curve, offset: (k / 8 + idx * 0.15) % 1 });
+      }
+    });
+
+    // confluence mark
+    const node = new THREE.Mesh(new THREE.SphereGeometry(1.2, 18, 18), new THREE.MeshStandardMaterial({ color: 0xf4d06f, emissive: 0x553300 }));
+    node.position.set(1, 2, 0);
+    scene.add(node);
+
+    // reservoirs
+    const resMeshes = [];
+    reservoirs.forEach((r) => {
+      const body = new THREE.Mesh(
+        new THREE.CylinderGeometry(2.2, 2.2, 4, 24),
+        new THREE.MeshStandardMaterial({ color: 0x7fd5ff, emissive: 0x1f4f80, transparent: true, opacity: 0.85 })
+      );
+      body.position.copy(r.pos);
+      body.position.y += 1.8;
+      scene.add(body);
+
+      const base = new THREE.Mesh(
+        new THREE.CylinderGeometry(2.5, 2.5, 0.6, 18),
+        new THREE.MeshStandardMaterial({ color: 0x3f4a62 })
+      );
+      base.position.copy(r.pos);
+      base.position.y += 0.2;
+      scene.add(base);
+      resMeshes.push(body);
+    });
+
+    function resize() {
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      if (canvas.width !== w || canvas.height !== h) {
+        renderer.setSize(w, h, false);
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+      }
+    }
+
+    function randn() {
+      let u = 0, v = 0;
+      while (!u) u = Math.random();
+      while (!v) v = Math.random();
+      return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+    }
+
+    function generateScenario() {
+      const days = +document.getElementById('days').value;
+      const season = document.getElementById('season').value;
+      const weather = document.getElementById('weather').value;
+      const ecoMin = +document.getElementById('ecoMin').value;
+      const noise = +document.getElementById('noise').value;
+
+      const totalInflow = [];
+      const riverSeries = riverDefs.map(() => []);
+      const demand = [];
+      const ecoNeed = [];
+      const weatherDaily = [];
+
+      for (let d = 0; d < days; d++) {
+        const wave = 0.25 * Math.sin((2 * Math.PI * d) / 20) + 0.15 * Math.sin((2 * Math.PI * d) / 47);
+        const weatherDay = Math.max(0.5, weatherFactor[weather] + wave + noise * randn());
+        weatherDaily.push(weatherDay);
+
+        let sumFlow = 0;
+        riverDefs.forEach((r, i) => {
+          const phase = 1 + 0.28 * Math.sin((2 * Math.PI * (d + i * 5)) / 33);
+          const q = Math.max(32, r.base * seasonFactor[season] * weatherDay * phase);
+          riverSeries[i].push(q);
+          sumFlow += q;
+        });
+
+        totalInflow.push(sumFlow);
+        const city = 168 + 18 * Math.sin((2 * Math.PI * d) / 16);
+        const agri = 182 + 24 * Math.sin((2 * Math.PI * (d + 8)) / 24) * (season === 'summer' ? 1.16 : 0.94);
+        demand.push(Math.max(245, city + agri));
+        ecoNeed.push(ecoMin + 10 * Math.sin((2 * Math.PI * d) / 13));
+      }
+
+      generated = { days, season, weather, totalInflow, riverSeries, demand, ecoNeed, weatherDaily };
+      simulated = null;
+      playDay = 0;
+      renderStats();
+      drawLineChart('flowChart', [
+        { label: '总入流', color: '#55b6ff', values: totalInflow },
+        { label: '需水', color: '#ff7ea7', values: demand }
+      ], 'm³/s');
+      drawLineChart('storageChart', [], '%');
+      renderTable([]);
+    }
+
+    function runSimulation() {
+      if (!generated) generateScenario();
+      const ecoMin = +document.getElementById('ecoMin').value;
+      const floodCap = +document.getElementById('floodCap').value / 100;
+      const mode = document.getElementById('mode').value;
+      const { days, totalInflow, demand, ecoNeed, weatherDaily } = generated;
+
+      const storage = reservoirs.map(r => r.cap * r.init);
+      const storageSeries = reservoirs.map(() => []);
+      const supplySeries = [];
+      const records = [];
+      let short = 0;
+      let ecoFail = 0;
+      let floodCnt = 0;
+
+      for (let d = 0; d < days; d++) {
+        let downstream = totalInflow[d] * 0.19;
+        let supplied = 0;
+
+        reservoirs.forEach((r, i) => {
+          storage[i] += totalInflow[d] * (0.078 + i * 0.024);
+          const capMax = r.cap * floodCap;
+          if (storage[i] > capMax) {
+            downstream += (storage[i] - capMax) * 0.88;
+            storage[i] = capMax;
+            floodCnt++;
+          }
+          const drought = weatherDaily[d] < 0.8 ? 0.9 : 1;
+          let ratio = mode === 'supply' ? 0.96 : mode === 'flood' ? 0.72 : 0.86;
+          ratio *= drought;
+          if (storage[i] / r.cap < 0.33) ratio -= 0.1;
+
+          const target = demand[d] / 3 + Math.max(ecoMin, ecoNeed[d]) * 0.24;
+          const release = Math.min(storage[i] * ratio * 0.11, target);
+          supplied += release;
+          storage[i] = Math.max(storage[i] - release, r.cap * 0.22);
+          downstream = downstream * 0.68 + release * 0.3;
+          storageSeries[i].push(storage[i] / r.cap * 100);
+        });
+
+        const ecoOK = downstream >= Math.max(ecoMin, ecoNeed[d]);
+        if (!ecoOK) ecoFail++;
+        const deficit = Math.max(0, demand[d] - supplied);
+        short += deficit;
+        supplySeries.push(supplied);
+        records.push({ day: d + 1, inflow: totalInflow[d], demand: demand[d], supply: supplied, ecoOK, floodSafe: floodCnt === 0 || storage.every((s, i) => s <= reservoirs[i].cap * floodCap), weather: weatherDaily[d] });
+      }
+
+      simulated = {
+        storageSeries,
+        supplySeries,
+        records,
+        shortage: short,
+        ecoRate: 1 - ecoFail / days,
+        floodRate: 1 - floodCnt / (days * reservoirs.length)
+      };
+
+      drawLineChart('flowChart', [
+        { label: '总入流', color: '#55b6ff', values: totalInflow },
+        { label: '需水', color: '#ff7ea7', values: demand },
+        { label: '供水', color: '#49e08c', values: supplySeries }
+      ], 'm³/s');
+
+      drawLineChart('storageChart', reservoirs.map((r, i) => ({
+        label: r.name,
+        color: ['#ffd166', '#c9a0ff', '#3fd4e5'][i],
+        values: simulated.storageSeries[i]
+      })), '%');
+
+      renderTable(records.slice(-10));
+      renderStats();
+    }
+
+    function drawLineChart(id, series, unit) {
+      const c = document.getElementById(id);
+      const ctx = c.getContext('2d');
+      const w = c.width, h = c.height;
+      ctx.clearRect(0, 0, w, h);
+      if (!series.length) {
+        ctx.fillStyle = '#9db2d8';
+        ctx.fillText('请先运行模拟', 20, 26);
+        return;
+      }
+      const all = series.flatMap(s => s.values);
+      const max = Math.max(...all) * 1.12;
+      const min = Math.min(...all) * 0.88;
+      const n = series[0].values.length;
+      const pad = { l: 42, r: 12, t: 16, b: 26 };
+      const pw = w - pad.l - pad.r;
+      const ph = h - pad.t - pad.b;
+      ctx.strokeStyle = '#2e4774';
+      for (let i = 0; i <= 5; i++) {
+        const y = pad.t + ph * i / 5;
+        ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+      }
+      series.forEach((s, idx) => {
+        ctx.strokeStyle = s.color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        s.values.forEach((v, i) => {
+          const x = pad.l + i / Math.max(n - 1, 1) * pw;
+          const y = pad.t + (max - v) / Math.max(max - min, 1) * ph;
+          i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+        });
+        ctx.stroke();
+        ctx.fillStyle = s.color;
+        ctx.fillRect(w - 116, 10 + idx * 15, 10, 3);
+        ctx.fillStyle = '#d7e4ff';
+        ctx.font = '11px sans-serif';
+        ctx.fillText(s.label, w - 101, 14 + idx * 15);
+      });
+      ctx.fillStyle = '#91a7d1';
+      ctx.font = '11px sans-serif';
+      ctx.fillText(`单位: ${unit}`, 6, h - 8);
+    }
+
+    function renderStats() {
+      const el = document.getElementById('stats');
+      const cards = [];
+      if (generated) {
+        cards.push({ k: '平均总入流', v: avg(generated.totalInflow).toFixed(1) + ' m³/s' });
+        cards.push({ k: '平均需水', v: avg(generated.demand).toFixed(1) + ' m³/s' });
+        cards.push({ k: '天气波动', v: std(generated.weatherDaily).toFixed(2) });
+        cards.push({ k: '河流数', v: riverDefs.length + ' 条' });
+      }
+      if (simulated) {
+        cards.push({ k: '供水满足率', v: ((1 - simulated.shortage / sum(generated.demand)) * 100).toFixed(1) + '%' });
+        cards.push({ k: '生态保障率', v: (simulated.ecoRate * 100).toFixed(1) + '%' });
+        cards.push({ k: '防洪安全率', v: (simulated.floodRate * 100).toFixed(1) + '%' });
+        cards.push({ k: '累计缺水', v: simulated.shortage.toFixed(1) + ' m³/s·d' });
+      }
+      el.innerHTML = cards.map(c => `<div class="stat"><div class="k">${c.k}</div><div class="v">${c.v}</div></div>`).join('');
+    }
+
+    function renderTable(rows) {
+      const body = document.getElementById('dailyTable');
+      if (!rows.length) {
+        body.innerHTML = '<tr><td colspan="7">暂无结果</td></tr>';
+        return;
+      }
+      body.innerHTML = rows.map(r => `
+      <tr>
+        <td>${r.day}</td>
+        <td>${r.inflow.toFixed(1)}</td>
+        <td>${r.demand.toFixed(1)}</td>
+        <td>${r.supply.toFixed(1)}</td>
+        <td><span class="tag ${r.ecoOK ? 'ok' : 'risk'}">${r.ecoOK ? '满足' : '不足'}</span></td>
+        <td><span class="tag ${r.floodSafe ? 'ok' : 'risk'}">${r.floodSafe ? '安全' : '预警'}</span></td>
+        <td>${r.weather.toFixed(2)}</td>
+      </tr>
+      `).join('');
+    }
+
+    function animate(t) {
+      resize();
+      controls.update();
+
+      const time = t * 0.001;
+      node.scale.setScalar(1 + 0.12 * Math.sin(time * 3));
+      particles.forEach((p, i) => {
+        const dayFactor = generated ? (playDay / Math.max(generated.days, 1)) : 0;
+        const u = (p.offset + time * 0.06 + dayFactor + i * 0.0008) % 1;
+        const pos = p.curve.getPointAt(u);
+        p.dot.position.copy(pos);
+      });
+
+      if (simulated) {
+        playDay = (playDay + 0.08) % generated.days;
+        const idx = Math.floor(playDay);
+        resMeshes.forEach((m, i) => {
+          const rate = simulated.storageSeries[i][Math.min(idx, simulated.storageSeries[i].length - 1)] / 100;
+          m.scale.y = 0.45 + rate * 1.25;
+          m.material.emissiveIntensity = 0.5 + rate * 0.8;
+        });
+      }
+
+      renderer.render(scene, camera);
+      requestAnimationFrame(animate);
+    }
+
+    const sum = arr => arr.reduce((a, b) => a + b, 0);
+    const avg = arr => sum(arr) / Math.max(arr.length, 1);
+    const std = arr => {
+      const m = avg(arr);
+      return Math.sqrt(avg(arr.map(v => (v - m) ** 2)));
+    };
+
+    document.getElementById('genBtn').addEventListener('click', generateScenario);
+    document.getElementById('simBtn').addEventListener('click', runSimulation);
+
+    generateScenario();
+    runSimulation();
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>
