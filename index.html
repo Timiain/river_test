@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>梯级流域河流小游戏</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <section class="panel">
+        <h1>梯级流域河流</h1>
+        <p>
+          点击画面可在山坡上增加雨滴，雨滴会汇入不同梯级河道，观察它们汇流进入主河。
+        </p>
+        <div class="stats">
+          <span>雨滴总数：<strong id="drop-count">0</strong></span>
+          <span>汇入主河：<strong id="river-count">0</strong></span>
+        </div>
+      </section>
+      <canvas id="game" width="960" height="600" aria-label="梯级流域河流画布"></canvas>
+    </main>
+
+    <script src="game.js"></script>
+  </body>
+</html>
