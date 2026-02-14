@@ -9,7 +9,7 @@
     * { box-sizing: border-box; }
     body { margin:0; overflow:hidden; background:#08111d; color:#d9edff; font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
     #app { position:fixed; inset:0; }
-    .hud { position:absolute; left:12px; top:12px; width:min(470px,96vw); max-height:96vh; overflow:auto; z-index:5; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px; backdrop-filter: blur(8px); }
+    .hud { position:absolute; left:12px; top:12px; width:min(500px,96vw); max-height:96vh; overflow:auto; z-index:5; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px; backdrop-filter: blur(8px); }
     .hud h1 { margin:0 0 6px; font-size:17px; }
     .desc { font-size:12px; opacity:.86; margin-bottom:8px; }
     .grid { display:grid; grid-template-columns:1fr auto; gap:5px 10px; align-items:center; font-size:12px; }
@@ -26,7 +26,7 @@
 <div id="app"></div>
 <section class="hud">
   <h1>省域多站点河网-多闸门动力学沙盘</h1>
-  <div class="desc">河流保持在地形之上；站点可拖拽；流量与水位采用色域映射（蓝绿→黄红）。</div>
+  <div class="desc">Shift多选站点后可一键连通；每站可设警戒水位并超限报警；河流贴地+流动效果+色域映射。</div>
   <div class="grid">
     <label for="rain">区域降雨 (mm/h)</label><span id="rainV">44</span><input id="rain" type="range" min="0" max="150" value="44" />
     <label for="temp">气温 (°C)</label><span id="tempV">22</span><input id="temp" type="range" min="-10" max="42" value="22" />
@@ -40,6 +40,7 @@
     <div>总入流: <strong id="totalIn">0</strong> m³/s，总出流: <strong id="totalOut">0</strong> m³/s</div>
     <div>分支站 SPL1 出流比: <strong id="splitRatio">0 / 0 / 0</strong></div>
     <div>闸前/闸后流速(中游坝): <strong id="vel">0 / 0</strong> m/s</div>
+    <div>报警站点数: <strong id="alarmCount">0</strong></div>
     <div>气候状态: <strong id="climate">--</strong></div>
     <div id="records"></div>
   </div>
@@ -48,10 +49,13 @@
     <h3>站点详情（点击/拖动3D站点）</h3>
     <div id="stationInfo">未选择站点</div>
     <div class="grid">
+      <label for="boundaryLevel">当前站点警戒水位</label><input id="boundaryLevel" type="number" step="0.1" />
+      <button id="setBoundaryBtn" type="button">更新警戒水位</button>
       <label for="edgeFrom">新增河段 From</label><select id="edgeFrom"></select>
       <label for="edgeTo">新增河段 To</label><select id="edgeTo"></select>
       <label for="edgeLift">曲线抬升</label><input id="edgeLift" type="number" value="3" min="0" max="15" step="0.5" />
       <button id="addEdgeBtn" type="button">新增河流连接</button>
+      <button id="connectSelectedBtn" type="button">连通已多选站点（按选择顺序）</button>
     </div>
   </div>
 
@@ -68,7 +72,7 @@
     </div>
   </div>
 </section>
-<div class="tip">拖拽旋转 · 按住站点拖动 · 流量+水位色域映射</div>
+<div class="tip">Shift+点击多选 · 拖动站点 · 流量/水位色域映射 · 红色!超警戒</div>
 
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/"}}</script>
 <script type="module">
@@ -127,7 +131,7 @@ let stations = [
   { id: 'SPL1', name: '分流站SPL1', x: -8, z: 0, type: 'split', ratio: [0.52, 0.30, 0.18] }, { id: 'MID_1', name: '东中站1', x: 24, z: 14, type: 'normal' },
   { id: 'GATE_B', name: '中游坝闸B', x: 42, z: -4, type: 'gate', gate: 'gateB' }, { id: 'MID_2', name: '东中站2', x: 52, z: 22, type: 'normal' },
   { id: 'CON_1', name: '总汇站', x: 70, z: 4, type: 'junction' }, { id: 'OUT_E', name: '东部出境', x: 106, z: 2, type: 'sink' }
-].map(s => ({ ...s, y: terrainHeight(s.x, s.z) + stationLift }));
+].map(s => ({ ...s, y: terrainHeight(s.x, s.z) + stationLift, boundaryLevel: terrainHeight(s.x, s.z) + stationLift + 6.5 }));
 
 let edges = [
   { id: 'e1', from: 'SRC_WN', to: 'GATE_A', lift: 5 }, { id: 'e2', from: 'SRC_MW', to: 'JN_1', lift: 3 }, { id: 'e3', from: 'GATE_A', to: 'JN_1', lift: 3 },
@@ -137,20 +141,40 @@ let edges = [
   { id: 'e13', from: 'CON_1', to: 'OUT_E', lift: 2 }
 ];
 
-let stationMeshById = new Map(), edgeMeshById = new Map(), gateMeshById = new Map();
+let stationMeshById = new Map(), edgeMeshById = new Map(), gateMeshById = new Map(), alarmMeshById = new Map();
 let stationMap = {}, incoming = {}, outgoing = {}, stationState = {}, edgeState = {};
 let selectedStationId = null, draggingStationId = null;
+const multiSelected = [];
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+
+function makeFlowTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#1f6fb7'; g.fillRect(0,0,256,256);
+  for (let i=0;i<500;i++) { g.fillStyle = `rgba(190,235,255,${Math.random()*0.35})`; g.fillRect(Math.random()*256, Math.random()*256, 2+Math.random()*4, 1+Math.random()*3); }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(6,1.4); return t;
+}
+const flowTexture = makeFlowTexture();
+
+function alarmSprite() {
+  const c = document.createElement('canvas'); c.width = 96; c.height = 96;
+  const g = c.getContext('2d');
+  g.fillStyle = 'rgba(255,0,0,0.9)'; g.beginPath(); g.arc(48,48,34,0,Math.PI*2); g.fill();
+  g.fillStyle = '#fff'; g.font = 'bold 58px sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillText('!', 48, 50);
+  const tex = new THREE.CanvasTexture(c);
+  return new THREE.SpriteMaterial({ map: tex, transparent: true });
+}
+const alarmMaterial = alarmSprite();
 
 const ui = {
   rain: document.getElementById('rain'), temp: document.getElementById('temp'), wind: document.getElementById('wind'),
   gateA: document.getElementById('gateA'), gateB: document.getElementById('gateB'), gateC: document.getElementById('gateC'),
   rainV: document.getElementById('rainV'), tempV: document.getElementById('tempV'), windV: document.getElementById('windV'),
   gateAV: document.getElementById('gateAV'), gateBV: document.getElementById('gateBV'), gateCV: document.getElementById('gateCV'),
-  stationCount: document.getElementById('stationCount'), edgeCount: document.getElementById('edgeCount'), totalIn: document.getElementById('totalIn'), totalOut: document.getElementById('totalOut'), splitRatio: document.getElementById('splitRatio'), vel: document.getElementById('vel'), climate: document.getElementById('climate'), records: document.getElementById('records'),
-  stationInfo: document.getElementById('stationInfo'), edgeFrom: document.getElementById('edgeFrom'), edgeTo: document.getElementById('edgeTo'), edgeLift: document.getElementById('edgeLift'), addEdgeBtn: document.getElementById('addEdgeBtn'),
+  stationCount: document.getElementById('stationCount'), edgeCount: document.getElementById('edgeCount'), totalIn: document.getElementById('totalIn'), totalOut: document.getElementById('totalOut'), splitRatio: document.getElementById('splitRatio'), vel: document.getElementById('vel'), climate: document.getElementById('climate'), records: document.getElementById('records'), alarmCount: document.getElementById('alarmCount'),
+  stationInfo: document.getElementById('stationInfo'), boundaryLevel: document.getElementById('boundaryLevel'), setBoundaryBtn: document.getElementById('setBoundaryBtn'), edgeFrom: document.getElementById('edgeFrom'), edgeTo: document.getElementById('edgeTo'), edgeLift: document.getElementById('edgeLift'), addEdgeBtn: document.getElementById('addEdgeBtn'), connectSelectedBtn: document.getElementById('connectSelectedBtn'),
   newId: document.getElementById('newId'), newName: document.getElementById('newName'), newType: document.getElementById('newType'), newX: document.getElementById('newX'), newZ: document.getElementById('newZ'), addStationBtn: document.getElementById('addStationBtn')
 };
 ['rain', 'temp', 'wind', 'gateA', 'gateB', 'gateC'].forEach(k => ui[k].addEventListener('input', () => ui[k + 'V'].textContent = ui[k].value));
@@ -182,28 +206,41 @@ function clearMeshes() {
   for (const m of edgeMeshById.values()) sandbox.remove(m);
   for (const m of stationMeshById.values()) sandbox.remove(m);
   for (const m of gateMeshById.values()) sandbox.remove(m);
-  edgeMeshById.clear(); stationMeshById.clear(); gateMeshById.clear();
+  for (const m of alarmMeshById.values()) sandbox.remove(m);
+  edgeMeshById.clear(); stationMeshById.clear(); gateMeshById.clear(); alarmMeshById.clear();
+}
+
+function buildTerrainFollowCurve(a, b, lift) {
+  const points = [];
+  const segments = 8;
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    const x = a.x + (b.x - a.x) * t;
+    const z = a.z + (b.z - a.z) * t;
+    const base = terrainHeight(x, z) + clearance;
+    const lerpY = a.y + (b.y - a.y) * t;
+    const hump = Math.sin(t * Math.PI) * lift;
+    const y = Math.max(base, lerpY + hump + 0.5);
+    points.push(new THREE.Vector3(x, y, z));
+  }
+  return new THREE.CatmullRomCurve3(points);
 }
 
 function buildMeshes() {
   clearMeshes();
   const minBase = Math.min(...stations.map(s => s.y));
   const maxBase = Math.max(...stations.map(s => s.y));
+
   for (const e of edges) {
     const a = stationMap[e.from], b = stationMap[e.to]; if (!a || !b) continue;
     const ay = Math.max(a.y, terrainHeight(a.x, a.z) + clearance);
     const by = Math.max(b.y, terrainHeight(b.x, b.z) + clearance);
-    const m1x = (a.x * 2 + b.x) / 3, m1z = (a.z * 2 + b.z) / 3;
-    const m2x = (a.x + b.x * 2) / 3, m2z = (a.z + b.z * 2) / 3;
-    const midTerrain = Math.max(terrainHeight(m1x, m1z), terrainHeight(m2x, m2z), terrainHeight((a.x + b.x) / 2, (a.z + b.z) / 2));
-    const my = Math.max(ay, by, midTerrain + clearance + 0.6) + e.lift;
-    const c1 = new THREE.Vector3(m1x, my, m1z);
-    const c2 = new THREE.Vector3(m2x, my, m2z);
-    const curve = new THREE.CatmullRomCurve3([new THREE.Vector3(a.x, ay, a.z), c1, c2, new THREE.Vector3(b.x, by, b.z)]);
+    const curve = buildTerrainFollowCurve({ ...a, y: ay }, { ...b, y: by }, e.lift);
     const mesh = new THREE.Mesh(
-      new THREE.TubeGeometry(curve, 90, 1.25, 12, false),
-      new THREE.MeshPhysicalMaterial({ color: 0x49b6ff, transparent: true, opacity: .66, roughness: .22, transmission: .32, clearcoat: .5 })
+      new THREE.TubeGeometry(curve, 120, 1.25, 14, false),
+      new THREE.MeshPhysicalMaterial({ map: flowTexture, color: 0x49b6ff, transparent: true, opacity: .66, roughness: .22, transmission: .32, clearcoat: .5 })
     );
+    mesh.userData.flowTex = mesh.material.map;
     sandbox.add(mesh); edgeMeshById.set(e.id, mesh);
   }
 
@@ -216,12 +253,20 @@ function buildMeshes() {
     );
     node.position.set(s.x, s.y, s.z); node.userData.stationId = s.id;
     sandbox.add(node); stationMeshById.set(s.id, node);
+
+    const alarm = new THREE.Sprite(alarmMaterial);
+    alarm.position.set(s.x, s.y + 4.5, s.z);
+    alarm.scale.set(2.2, 2.2, 1);
+    alarm.visible = false;
+    sandbox.add(alarm); alarmMeshById.set(s.id, alarm);
+
     if (s.type === 'gate') {
       const gateBar = new THREE.Mesh(new THREE.BoxGeometry(1.1, 5.2, 2.8), new THREE.MeshStandardMaterial({ color: 0xcfd7df, metalness: .45, roughness: .42 }));
       gateBar.position.set(s.x + 1.8, s.y, s.z); sandbox.add(gateBar); gateMeshById.set(s.id, gateBar);
     }
   }
 
+  updateSelectionHighlight();
   ui.stationCount.textContent = stations.length;
   ui.edgeCount.textContent = edges.length;
 }
@@ -231,25 +276,41 @@ function refreshSelectors() {
   ui.edgeFrom.innerHTML = options; ui.edgeTo.innerHTML = options;
 }
 
+function updateSelectionHighlight() {
+  for (const [sid, m] of stationMeshById.entries()) {
+    if (sid === selectedStationId) m.scale.setScalar(1.38);
+    else if (multiSelected.includes(sid)) m.scale.setScalar(1.22);
+    else m.scale.setScalar(1);
+  }
+}
+
 function showStationInfo(id) {
   selectedStationId = id;
-  for (const [sid, m] of stationMeshById.entries()) m.scale.setScalar(sid === id ? 1.35 : 1);
+  updateSelectionHighlight();
   const s = stationMap[id];
   const ins = incoming[id]?.join(', ') || '无';
   const outs = outgoing[id]?.join(', ') || '无';
   const rec = stationState[id]?.history.at(-1);
-  ui.stationInfo.textContent = `${s.id} ${s.name}\n类型:${s.type}\n坐标:(${s.x.toFixed(1)}, ${s.y.toFixed(1)}, ${s.z.toFixed(1)})\n输入河段:${ins}\n输出河段:${outs}\n当前入流:${(rec?.inQ ?? 0).toFixed(1)}  当前出流:${(rec?.out ?? 0).toFixed(1)}\n水位:${(rec?.level ?? s.y).toFixed(2)}`;
+  ui.stationInfo.textContent = `${s.id} ${s.name}\n类型:${s.type}\n坐标:(${s.x.toFixed(1)}, ${s.y.toFixed(1)}, ${s.z.toFixed(1)})\n输入河段:${ins}\n输出河段:${outs}\n当前入流:${(rec?.inQ ?? 0).toFixed(1)}  当前出流:${(rec?.out ?? 0).toFixed(1)}\n水位:${(rec?.level ?? s.y).toFixed(2)} 警戒:${s.boundaryLevel.toFixed(2)}`;
   ui.edgeFrom.value = id;
+  ui.boundaryLevel.value = s.boundaryLevel.toFixed(2);
 }
 
 rebuildGraph(); buildMeshes(); refreshSelectors(); showStationInfo(stations[0].id);
+
+ui.setBoundaryBtn.addEventListener('click', () => {
+  if (!selectedStationId) return;
+  const s = stationMap[selectedStationId];
+  s.boundaryLevel = Number(ui.boundaryLevel.value) || s.boundaryLevel;
+  showStationInfo(selectedStationId);
+});
 
 ui.addStationBtn.addEventListener('click', () => {
   const id = ui.newId.value.trim(); if (!id || stationMap[id]) return;
   const x = Number(ui.newX.value), z = Number(ui.newZ.value);
   const y = terrainHeight(x, z) + stationLift;
   const type = ui.newType.value;
-  const station = { id, name: ui.newName.value.trim() || id, x, z, y, type };
+  const station = { id, name: ui.newName.value.trim() || id, x, z, y, type, boundaryLevel: y + 6.5 };
   if (type === 'split') station.ratio = [0.5, 0.3, 0.2];
   if (type === 'gate') station.gate = 'gateB';
   stations.push(station);
@@ -264,6 +325,19 @@ ui.addEdgeBtn.addEventListener('click', () => {
   rebuildGraph(); buildMeshes(); showStationInfo(selectedStationId || from);
 });
 
+ui.connectSelectedBtn.addEventListener('click', () => {
+  if (multiSelected.length < 2) return;
+  for (let i = 0; i < multiSelected.length - 1; i++) {
+    const from = multiSelected[i], to = multiSelected[i + 1];
+    if (from === to) continue;
+    const id = `e${edges.length + 1}`;
+    edges.push({ id, from, to, lift: Number(ui.edgeLift.value) || 2.5 });
+    edgeState[id] = { q: 0 };
+  }
+  rebuildGraph(); buildMeshes();
+  showStationInfo(multiSelected[multiSelected.length - 1]);
+});
+
 function pointerToNDC(ev) {
   const r = renderer.domElement.getBoundingClientRect();
   mouse.x = ((ev.clientX - r.left) / r.width) * 2 - 1;
@@ -274,11 +348,21 @@ renderer.domElement.addEventListener('pointerdown', ev => {
   pointerToNDC(ev);
   raycaster.setFromCamera(mouse, camera);
   const hit = raycaster.intersectObjects([...stationMeshById.values()])[0];
-  if (hit?.object?.userData?.stationId) {
-    draggingStationId = hit.object.userData.stationId;
-    controls.enabled = false;
-    showStationInfo(draggingStationId);
+  if (!hit?.object?.userData?.stationId) return;
+  const sid = hit.object.userData.stationId;
+
+  if (ev.shiftKey) {
+    if (multiSelected.includes(sid)) multiSelected.splice(multiSelected.indexOf(sid), 1);
+    else multiSelected.push(sid);
+    selectedStationId = sid;
+    showStationInfo(sid);
+    return;
   }
+
+  draggingStationId = sid;
+  controls.enabled = false;
+  if (!multiSelected.includes(sid)) multiSelected.length = 0;
+  showStationInfo(draggingStationId);
 });
 
 renderer.domElement.addEventListener('pointermove', ev => {
@@ -292,6 +376,7 @@ renderer.domElement.addEventListener('pointermove', ev => {
     s.z = Math.max(-provinceSize.z / 2 + 2, Math.min(provinceSize.z / 2 - 2, p.z));
     s.y = terrainHeight(s.x, s.z) + stationLift;
     if (stationState[s.id]) stationState[s.id].level = s.y;
+    if (s.boundaryLevel < s.y + 1.5) s.boundaryLevel = s.y + 1.5;
     buildMeshes();
     showStationInfo(s.id);
   }
@@ -361,33 +446,45 @@ function simulate(dt) {
   const maxLvl = Math.max(...stations.map(s => stationState[s.id]?.level ?? s.y));
   const span = Math.max(1e-6, maxLvl - minLvl);
 
-  for (const e of edges) {
+  for (const [eid, m] of edgeMeshById.entries()) {
+    const e = edges.find(x => x.id === eid); if (!e) continue;
     const target = stationOutMap[e.from]?.[e.id] ?? 0;
     edgeState[e.id].q += (target - edgeState[e.id].q) * Math.min(1, dt * .62);
-    const m = edgeMeshById.get(e.id); if (!m) continue;
     const lv = ((stationState[e.from]?.level ?? stationMap[e.from].y) + (stationState[e.to]?.level ?? stationMap[e.to].y)) / 2;
     const ln = (lv - minLvl) / span;
     m.material.color.copy(edgeColor(edgeState[e.id].q, ln));
     m.material.opacity = .40 + Math.min(.52, edgeState[e.id].q / 620);
     m.scale.y = .72 + Math.min(1.2, edgeState[e.id].q / 520) * .58;
+    m.userData.flowTex.offset.x -= dt * 0.06 * Math.max(0.3, edgeState[e.id].q / 240);
   }
 
+  let alarmCount = 0;
   for (const s of stations) {
-    const mesh = stationMeshById.get(s.id); if (!mesh) continue;
-    const ln = ((stationState[s.id]?.level ?? s.y) - minLvl) / span;
-    mesh.material.color.copy(stationColor(s.type, ln));
+    const lv = stationState[s.id]?.level ?? s.y;
+    const ln = (lv - minLvl) / span;
+    const mesh = stationMeshById.get(s.id); if (mesh) mesh.material.color.copy(stationColor(s.type, ln));
+    const alarm = alarmMeshById.get(s.id);
+    const over = lv > s.boundaryLevel;
+    if (alarm) {
+      alarm.position.set(s.x, s.y + 4.5 + Math.sin(t * 1.8) * 0.25, s.z);
+      alarm.visible = over;
+    }
+    if (over) alarmCount++;
   }
 
   const qPre = edgeState.e8?.q || 0, qPost = edgeState.e11?.q || 0;
   ui.totalIn.textContent = totalIn.toFixed(1); ui.totalOut.textContent = totalOut.toFixed(1);
   ui.splitRatio.textContent = `${(edgeState.e7?.q || 0).toFixed(1)} / ${(edgeState.e8?.q || 0).toFixed(1)} / ${(edgeState.e9?.q || 0).toFixed(1)}`;
   ui.vel.textContent = `${(qPre / (28 + +ui.gateB.value * .2)).toFixed(2)} / ${(qPost / (16 + +ui.gateB.value * .12)).toFixed(2)}`;
+  ui.alarmCount.textContent = String(alarmCount);
   ui.climate.textContent = climateLabel(rain, temp);
 
   const focus = ['GATE_A', 'SPL1', 'GATE_B', 'CON_1', 'OUT_E'].filter(id => stationState[id]);
   ui.records.textContent = focus.map(id => {
     const rec = stationState[id].history.at(-1);
-    return `${id.padEnd(7)} in:${(rec?.inQ ?? 0).toFixed(1).padStart(6)} out:${(rec?.out ?? 0).toFixed(1).padStart(6)} level:${(rec?.level ?? stationMap[id].y).toFixed(2).padStart(6)}`;
+    const s = stationMap[id];
+    const mark = (rec?.level ?? s.y) > s.boundaryLevel ? ' !' : '  ';
+    return `${id.padEnd(7)} in:${(rec?.inQ ?? 0).toFixed(1).padStart(6)} out:${(rec?.out ?? 0).toFixed(1).padStart(6)} level:${(rec?.level ?? s.y).toFixed(2).padStart(6)}${mark}`;
   }).join('\n');
 
   if (selectedStationId && stationMap[selectedStationId]) showStationInfo(selectedStationId);
