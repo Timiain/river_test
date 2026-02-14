@@ -34,6 +34,7 @@
     <label for="gateA">闸门A（上游库）%</label><span id="gateAV">60</span><input id="gateA" type="range" min="0" max="100" value="60" />
     <label for="gateB">闸门B（中游坝）%</label><span id="gateBV">45</span><input id="gateB" type="range" min="0" max="100" value="45" />
     <label for="gateC">闸门C（支流闸）%</label><span id="gateCV">52</span><input id="gateC" type="range" min="0" max="100" value="52" />
+    <label for="satelliteToggle">卫星图层</label><span>开启后更自然</span><input id="satelliteToggle" type="checkbox" />
   </div>
   <div class="stats">
     <div>总站点数: <strong id="stationCount">0</strong>，河段数: <strong id="edgeCount">0</strong></div>
@@ -102,6 +103,23 @@ const sun = new THREE.DirectionalLight(0xffffff, 1.28);
 sun.position.set(90, 110, 22);
 scene.add(sun);
 
+const sunMesh = new THREE.Mesh(new THREE.SphereGeometry(5.8, 24, 24), new THREE.MeshBasicMaterial({ color: 0xfff2b0 }));
+sunMesh.position.set(130, 120, -80);
+scene.add(sunMesh);
+
+const cloudGroup = new THREE.Group();
+scene.add(cloudGroup);
+for (let i = 0; i < 14; i++) {
+  const cloud = new THREE.Mesh(
+    new THREE.SphereGeometry(3.8 + Math.random() * 2.6, 14, 14),
+    new THREE.MeshStandardMaterial({ color: 0xe6f2ff, transparent: true, opacity: 0.78, roughness: 0.95 })
+  );
+  cloud.position.set(-90 + Math.random() * 210, 68 + Math.random() * 28, -55 + Math.random() * 120);
+  cloud.scale.set(1.8 + Math.random() * 1.2, 0.65 + Math.random() * 0.35, 1.0 + Math.random() * 0.8);
+  cloud.userData.spd = 0.25 + Math.random() * 0.45;
+  cloudGroup.add(cloud);
+}
+
 const sandbox = new THREE.Group();
 scene.add(sandbox);
 const provinceSize = { x: 245, z: 150 };
@@ -119,7 +137,9 @@ function terrainHeight(x, z) {
 }
 for (let i = 0; i < terrainPos.count; i++) terrainPos.setY(i, terrainHeight(terrainPos.getX(i), terrainPos.getZ(i)));
 terrainGeo.computeVertexNormals();
-sandbox.add(new THREE.Mesh(terrainGeo, new THREE.MeshStandardMaterial({ color: 0x576f84, roughness: .96, metalness: .03 })));
+const terrainMaterial = new THREE.MeshStandardMaterial({ color: 0x576f84, roughness: .96, metalness: .03 });
+const terrainMesh = new THREE.Mesh(terrainGeo, terrainMaterial);
+sandbox.add(terrainMesh);
 const grid = new THREE.GridHelper(270, 27, 0x36506d, 0x223648); grid.position.y = .2; sandbox.add(grid);
 
 const clearance = 1.35;
@@ -158,6 +178,63 @@ function makeFlowTexture() {
 }
 const flowTexture = makeFlowTexture();
 
+function generateSatelliteTexture() {
+  const size = 768;
+  const c = document.createElement('canvas'); c.width = c.height = size;
+  const g = c.getContext('2d');
+  const xMin = -provinceSize.x / 2, xMax = provinceSize.x / 2;
+  const zMin = -provinceSize.z / 2, zMax = provinceSize.z / 2;
+
+  let hMin = Infinity, hMax = -Infinity;
+  for (let y = 0; y < size; y += 6) {
+    for (let x = 0; x < size; x += 6) {
+      const wx = xMin + (x / (size - 1)) * (xMax - xMin);
+      const wz = zMin + (y / (size - 1)) * (zMax - zMin);
+      const h = terrainHeight(wx, wz);
+      hMin = Math.min(hMin, h); hMax = Math.max(hMax, h);
+    }
+  }
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const wx = xMin + (x / (size - 1)) * (xMax - xMin);
+      const wz = zMin + (y / (size - 1)) * (zMax - zMin);
+      const h = terrainHeight(wx, wz);
+      const n = (h - hMin) / Math.max(1e-6, (hMax - hMin));
+      const moisture = 0.5 + 0.3 * Math.sin(wx * 0.06) * Math.cos(wz * 0.07);
+      const riverBias = Math.exp(-Math.abs(wz + 5) / 20) * 0.22;
+      let r, gg, b;
+      if (n < 0.27) { r = 26; gg = 76 + n * 120; b = 155 + n * 80; }
+      else if (n < 0.62) { r = 34 + n * 56; gg = 100 + n * 110 + moisture * 25; b = 52 + n * 30; }
+      else { r = 118 + n * 70; gg = 110 + n * 54; b = 98 + n * 40; }
+      r += riverBias * 65; gg += riverBias * 95; b += riverBias * 120;
+      g.fillStyle = `rgb(${Math.min(255, r|0)},${Math.min(255, gg|0)},${Math.min(255, b|0)})`;
+      g.fillRect(x, y, 1, 1);
+    }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+let satelliteTexture = null;
+function setSatelliteLayer(enabled) {
+  if (enabled) {
+    if (!satelliteTexture) satelliteTexture = generateSatelliteTexture();
+    terrainMaterial.map = satelliteTexture;
+    terrainMaterial.color.setHex(0xffffff);
+    terrainMaterial.roughness = 1.0;
+    terrainMaterial.metalness = 0.0;
+  } else {
+    terrainMaterial.map = null;
+    terrainMaterial.color.setHex(0x576f84);
+    terrainMaterial.roughness = .96;
+    terrainMaterial.metalness = .03;
+  }
+  terrainMaterial.needsUpdate = true;
+}
+
 function alarmSprite() {
   const c = document.createElement('canvas'); c.width = 96; c.height = 96;
   const g = c.getContext('2d');
@@ -175,9 +252,10 @@ const ui = {
   gateAV: document.getElementById('gateAV'), gateBV: document.getElementById('gateBV'), gateCV: document.getElementById('gateCV'),
   stationCount: document.getElementById('stationCount'), edgeCount: document.getElementById('edgeCount'), totalIn: document.getElementById('totalIn'), totalOut: document.getElementById('totalOut'), splitRatio: document.getElementById('splitRatio'), vel: document.getElementById('vel'), climate: document.getElementById('climate'), records: document.getElementById('records'), alarmCount: document.getElementById('alarmCount'),
   stationInfo: document.getElementById('stationInfo'), boundaryLevel: document.getElementById('boundaryLevel'), setBoundaryBtn: document.getElementById('setBoundaryBtn'), edgeFrom: document.getElementById('edgeFrom'), edgeTo: document.getElementById('edgeTo'), edgeLift: document.getElementById('edgeLift'), addEdgeBtn: document.getElementById('addEdgeBtn'), connectSelectedBtn: document.getElementById('connectSelectedBtn'),
-  newId: document.getElementById('newId'), newName: document.getElementById('newName'), newType: document.getElementById('newType'), newX: document.getElementById('newX'), newZ: document.getElementById('newZ'), addStationBtn: document.getElementById('addStationBtn')
+  newId: document.getElementById('newId'), newName: document.getElementById('newName'), newType: document.getElementById('newType'), newX: document.getElementById('newX'), newZ: document.getElementById('newZ'), addStationBtn: document.getElementById('addStationBtn'), satelliteToggle: document.getElementById('satelliteToggle')
 };
 ['rain', 'temp', 'wind', 'gateA', 'gateB', 'gateC'].forEach(k => ui[k].addEventListener('input', () => ui[k + 'V'].textContent = ui[k].value));
+ui.satelliteToggle.addEventListener('change', () => setSatelliteLayer(ui.satelliteToggle.checked));
 
 function rebuildGraph() {
   stationMap = Object.fromEntries(stations.map(s => [s.id, s]));
@@ -297,6 +375,7 @@ function showStationInfo(id) {
 }
 
 rebuildGraph(); buildMeshes(); refreshSelectors(); showStationInfo(stations[0].id);
+setSatelliteLayer(false);
 
 ui.setBoundaryBtn.addEventListener('click', () => {
   if (!selectedStationId) return;
@@ -491,6 +570,13 @@ function simulate(dt) {
   const skyMix = Math.max(0, Math.min(1, rain * .008 + temp * .02));
   scene.background = new THREE.Color().setHSL(.58 - skyMix * .13, .45, .1 + skyMix * .08);
   sun.intensity = 1.38 - Math.min(.92, rain / 150);
+  sunMesh.position.x = 125 + Math.sin(t * 0.035) * 22;
+  sunMesh.position.y = 112 + Math.cos(t * 0.03) * 6;
+  cloudGroup.children.forEach((c, idx) => {
+    c.position.x += c.userData.spd * dt * 0.6;
+    c.position.z += Math.sin(t * 0.12 + idx) * 0.02;
+    if (c.position.x > provinceSize.x / 2 + 30) c.position.x = -provinceSize.x / 2 - 30;
+  });
 }
 
 function animate() {
