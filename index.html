@@ -131,6 +131,8 @@
       <div>大坝出流 <strong id="outflow">0</strong> m³/s</div>
       <div>库区水位 <strong id="level">0</strong> m</div>
       <div>蒸发损失 <strong id="evap">0</strong> m³/s</div>
+      <div>上游主槽/支流 <strong id="split">0 / 0</strong> m³/s</div>
+      <div>坝前/坝后流速 <strong id="velocity">0 / 0</strong> m/s</div>
       <div>天气状态 <strong id="climate">多云</strong></div>
     </div>
 
@@ -139,6 +141,8 @@
       <span class="sw"><i class="dot" style="background:#98ecff"></i>水位立方</span>
       <span class="sw"><i class="dot" style="background:#ff9b52"></i>流量立方</span>
       <span class="sw"><i class="dot" style="background:#8a8d99"></i>梯级山体/大坝</span>
+      <span class="sw"><i class="dot" style="background:#4de2a8"></i>低流速断面</span>
+      <span class="sw"><i class="dot" style="background:#ff4d6a"></i>高流速断面</span>
     </div>
   </section>
 
@@ -305,6 +309,30 @@
     gaugeGroup.add(levelCube, flowCube);
     scene.add(gaugeGroup);
 
+    function velocityColor(speed) {
+      const norm = clamp((speed - 0.2) / 3.4, 0, 1);
+      const color = new THREE.Color();
+      color.setHSL(0.42 - 0.42 * norm, 0.85, 0.5);
+      return color;
+    }
+
+    function makeVelocitySection(x, y, z, w, h) {
+      const material = new THREE.MeshBasicMaterial({
+        color: velocityColor(0.5),
+        transparent: true,
+        opacity: 0.62,
+        side: THREE.DoubleSide
+      });
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), material);
+      mesh.position.set(x, y, z);
+      mesh.rotation.y = Math.PI / 2;
+      scene.add(mesh);
+      return mesh;
+    }
+
+    const upstreamSection = makeVelocitySection(18.4, 6.4, 0, 8.5, 5.4);
+    const downstreamSection = makeVelocitySection(25.6, 4.9, 0, 8.5, 4.2);
+
     const dropletsCount = 1400;
     const rainPos = new Float32Array(dropletsCount * 3);
     const rainVel = new Float32Array(dropletsCount);
@@ -333,6 +361,8 @@
       outflow: document.getElementById('outflow'),
       level: document.getElementById('level'),
       evap: document.getElementById('evap'),
+      split: document.getElementById('split'),
+      velocity: document.getElementById('velocity'),
       climate: document.getElementById('climate')
     };
 
@@ -346,8 +376,16 @@
       reservoirLevel: 8.2,
       inflow: 165,
       outflow: 130,
-      evaporation: 9
+      evaporation: 9,
+      mainInflow: 110,
+      branchInflow: 55,
+      upstreamVelocity: 0.9,
+      downstreamVelocity: 1.1
     };
+
+    const runoffLagQueue = Array.from({ length: 120 }, () => 0);
+    let lagCursor = 0;
+
 
     let t = 0;
     const clock = new THREE.Clock();
@@ -371,21 +409,39 @@
       const gateOpen = Number(ui.gate.value) / 100;
 
       const catchmentArea = 3200000;
-      const runoffCoeff = 0.28 + rainInput / 300 + Math.sin(t * 0.22) * 0.03;
+      const runoffCoeff = clamp(0.22 + rainInput / 280 + Math.sin(t * 0.15) * 0.02, 0.18, 0.74);
       const rainMps = rainInput / 1000 / 3600;
-      const rainfallInflow = rainMps * catchmentArea * clamp(runoffCoeff, 0.25, 0.68);
-      const glacierPulse = Math.max(0, (tempInput - 7) * 1.35);
-      state.inflow += (rainfallInflow + glacierPulse - state.inflow) * Math.min(1, dt * 0.45);
+      const immediateRunoff = rainMps * catchmentArea * runoffCoeff;
 
-      const evapFactor = clamp((tempInput - 4) * 0.55 + windInput * 0.8, 0, 42);
+      runoffLagQueue[lagCursor] = immediateRunoff;
+      const lagIndex1 = (lagCursor + 120 - 22) % 120;
+      const lagIndex2 = (lagCursor + 120 - 54) % 120;
+      const lagIndex3 = (lagCursor + 120 - 88) % 120;
+      const delayedRunoff = runoffLagQueue[lagIndex1] * 0.5 + runoffLagQueue[lagIndex2] * 0.35 + runoffLagQueue[lagIndex3] * 0.15;
+      lagCursor = (lagCursor + 1) % 120;
+
+      const branchRatio = clamp(0.25 + 0.18 * Math.sin(t * 0.11) + windInput / 120, 0.16, 0.48);
+      const glacierPulse = Math.max(0, (tempInput - 8) * 1.2);
+      const targetInflow = delayedRunoff + glacierPulse;
+
+      state.inflow += (targetInflow - state.inflow) * Math.min(1, dt * 0.4);
+      state.branchInflow += (state.inflow * branchRatio - state.branchInflow) * Math.min(1, dt * 0.45);
+      state.mainInflow = Math.max(0, state.inflow - state.branchInflow);
+
+      const evapFactor = clamp((tempInput - 4) * 0.55 + windInput * 0.8, 0, 45);
       state.evaporation += (evapFactor - state.evaporation) * Math.min(1, dt * 0.35);
 
-      const baseRelease = 24 + gateOpen * 210;
-      const headBoost = Math.max(0, state.reservoirLevel - 4.5) * 5.8;
-      state.outflow += (baseRelease + headBoost - state.outflow) * Math.min(1, dt * 0.6);
+      const baseRelease = 26 + gateOpen * 225;
+      const headBoost = Math.max(0, state.reservoirLevel - 4.5) * 7.2;
+      state.outflow += (baseRelease + headBoost - state.outflow) * Math.min(1, dt * 0.58);
 
-      const dStorage = (state.inflow - state.outflow - state.evaporation) * dt;
-      state.reservoirLevel = clamp(state.reservoirLevel + dStorage / 1100, 3.5, 15.5);
+      const dStorage = (state.mainInflow - state.outflow - state.evaporation) * dt;
+      state.reservoirLevel = clamp(state.reservoirLevel + dStorage / 980, 3.4, 16.4);
+
+      const upstreamArea = 48 + state.reservoirLevel * 3.8;
+      const downstreamArea = 18 + gateOpen * 12;
+      state.upstreamVelocity += (state.mainInflow / upstreamArea - state.upstreamVelocity) * Math.min(1, dt * 0.55);
+      state.downstreamVelocity += (state.outflow / downstreamArea - state.downstreamVelocity) * Math.min(1, dt * 0.65);
 
       const levelNorm = (state.reservoirLevel - 3.5) / 12;
       gate.position.y = 4.5 + gateOpen * 2.8;
@@ -394,16 +450,21 @@
 
       levelCube.scale.y = 0.65 + levelNorm * 3.6;
       levelCube.position.y = 4.2 + levelCube.scale.y;
-      flowCube.scale.y = 0.5 + clamp(state.outflow / 280, 0, 1.2) * 3.3;
+      flowCube.scale.y = 0.5 + clamp(state.outflow / 280, 0, 1.25) * 3.3;
       flowCube.position.y = 4.2 + flowCube.scale.y;
 
-      const flowSpeed = clamp(state.outflow / 220, 0.3, 2.2);
-      waterTexture.offset.x -= dt * 0.4 * flowSpeed;
-      riverMaterial.opacity = 0.54 + 0.35 * clamp(state.reservoirLevel / 15, 0, 1);
-      riverMesh.scale.set(1, 0.75 + levelNorm * 0.8, 1);
+      upstreamSection.material.color.copy(velocityColor(state.upstreamVelocity));
+      downstreamSection.material.color.copy(velocityColor(state.downstreamVelocity));
+      upstreamSection.material.opacity = 0.35 + clamp(state.upstreamVelocity / 4, 0, 0.5);
+      downstreamSection.material.opacity = 0.35 + clamp(state.downstreamVelocity / 4, 0, 0.5);
+
+      const flowSpeed = clamp((state.upstreamVelocity + state.downstreamVelocity) / 2.4, 0.3, 2.4);
+      waterTexture.offset.x -= dt * 0.42 * flowSpeed;
+      riverMaterial.opacity = 0.52 + 0.35 * clamp(state.reservoirLevel / 15, 0, 1);
+      riverMesh.scale.set(1, 0.72 + levelNorm * 0.9, 1);
 
       rain.visible = rainInput > 3;
-      rainMat.opacity = clamp(rainInput / 100, 0.15, 0.85);
+      rainMat.opacity = clamp(rainInput / 100, 0.12, 0.88);
       const pos = rainGeo.attributes.position.array;
       for (let i = 0; i < dropletsCount; i++) {
         pos[i * 3] += (windInput - 3) * 0.002;
@@ -420,6 +481,8 @@
       ui.outflow.textContent = state.outflow.toFixed(1);
       ui.level.textContent = state.reservoirLevel.toFixed(2);
       ui.evap.textContent = state.evaporation.toFixed(1);
+      ui.split.textContent = `${state.mainInflow.toFixed(1)} / ${state.branchInflow.toFixed(1)}`;
+      ui.velocity.textContent = `${state.upstreamVelocity.toFixed(2)} / ${state.downstreamVelocity.toFixed(2)}`;
       ui.climate.textContent = climateLabel(rainInput, tempInput);
 
       const skyMix = clamp((tempInput + rainInput * 0.15) / 52, 0, 1);
