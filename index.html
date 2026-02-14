@@ -155,6 +155,21 @@ const terrainMesh = new THREE.Mesh(terrainGeo, terrainMaterial);
 sandbox.add(terrainMesh);
 const grid = new THREE.GridHelper(270, 27, 0x36506d, 0x223648); grid.position.y = .2; sandbox.add(grid);
 
+const terrainCursor = new THREE.Group();
+const cursorRing = new THREE.Mesh(
+  new THREE.RingGeometry(1.2, 1.7, 28),
+  new THREE.MeshBasicMaterial({ color: 0x36d6ff, transparent: true, opacity: 0.75, side: THREE.DoubleSide })
+);
+cursorRing.rotation.x = -Math.PI / 2;
+const cursorArrow = new THREE.Mesh(
+  new THREE.ConeGeometry(0.42, 1.2, 14),
+  new THREE.MeshBasicMaterial({ color: 0x8fe8ff, transparent: true, opacity: 0.85 })
+);
+cursorArrow.position.y = 1.1;
+terrainCursor.add(cursorRing, cursorArrow);
+terrainCursor.visible = false;
+sandbox.add(terrainCursor);
+
 const terrainDx = provinceSize.x / terrainSegX;
 const terrainDz = provinceSize.z / terrainSegZ;
 const terrainRow = terrainSegX + 1;
@@ -199,8 +214,9 @@ let edges = [
 ];
 
 let stationMeshById = new Map(), edgeMeshById = new Map(), gateMeshById = new Map(), alarmMeshById = new Map();
-let stationMap = {}, incoming = {}, outgoing = {}, stationState = {}, edgeState = {};
-let selectedStationId = null, draggingStationId = null, terrainEditing = false;
+let stationMap = {}, incoming = {}, outgoing = {}, stationState = {}, edgeState = {}, edgeById = {};
+let selectedStationId = null, draggingStationId = null, terrainEditing = false, terrainDirty = false;
+let lastTerrainNormalUpdate = 0;
 const multiSelected = [];
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
@@ -293,11 +309,16 @@ const ui = {
 };
 ['rain', 'temp', 'wind', 'gateA', 'gateB', 'gateC'].forEach(k => ui[k].addEventListener('input', () => ui[k + 'V'].textContent = ui[k].value));
 ui.satelliteToggle.addEventListener('change', () => setSatelliteLayer(ui.satelliteToggle.checked));
+ui.terrainEditToggle.addEventListener('change', () => {
+  terrainCursor.visible = false;
+  if (!ui.terrainEditToggle.checked) { terrainEditing = false; controls.enabled = true; }
+});
 
 function rebuildGraph() {
   stationMap = Object.fromEntries(stations.map(s => [s.id, s]));
   incoming = Object.fromEntries(stations.map(s => [s.id, []]));
   outgoing = Object.fromEntries(stations.map(s => [s.id, []]));
+  edgeById = Object.fromEntries(edges.map(e => [e.id, e]));
   for (const e of edges) { if (incoming[e.to]) incoming[e.to].push(e.id); if (outgoing[e.from]) outgoing[e.from].push(e.id); }
   for (const s of stations) if (!stationState[s.id]) stationState[s.id] = { q: 0, level: s.y, history: [] };
   for (const e of edges) if (!edgeState[e.id]) edgeState[e.id] = { q: 0 };
@@ -469,6 +490,17 @@ function refreshTerrainAfterEdit() {
     if (ui.satelliteToggle.checked) setSatelliteLayer(true);
   }
   buildMeshes();
+  terrainDirty = false;
+}
+
+function updateTerrainCursor(x, z, visible = true) {
+  terrainCursor.position.set(x, terrainHeight(x, z) + 0.18, z);
+  const r = Number(ui.terrainRadius.value);
+  cursorRing.scale.set(r * 0.45, r * 0.45, 1);
+  cursorArrow.position.y = 0.8 + Number(ui.terrainStrength.value) * 0.35;
+  cursorArrow.material.color.set(ui.terrainAction.value === 'raise' ? 0x7cf6ff : 0xff8ea1);
+  cursorRing.material.color.set(ui.terrainAction.value === 'raise' ? 0x36d6ff : 0xff5e78);
+  terrainCursor.visible = visible;
 }
 
 function editTerrainAt(x, z) {
@@ -484,7 +516,14 @@ function editTerrainAt(x, z) {
     const falloff = Math.exp(-(d * d) / (radius * radius * 0.45));
     arr[i * 3 + 1] += sign * strength * 0.18 * falloff;
   }
-  refreshTerrainAfterEdit();
+  terrainGeo.attributes.position.needsUpdate = true;
+  terrainDirty = true;
+  const now = performance.now();
+  if (now - lastTerrainNormalUpdate > 120) {
+    terrainGeo.computeVertexNormals();
+    terrainGeo.attributes.normal.needsUpdate = true;
+    lastTerrainNormalUpdate = now;
+  }
 }
 
 function pointerToNDC(ev) {
@@ -502,6 +541,7 @@ renderer.domElement.addEventListener('pointerdown', ev => {
     if (groundHit) {
       terrainEditing = true;
       controls.enabled = false;
+      updateTerrainCursor(groundHit.point.x, groundHit.point.z, true);
       editTerrainAt(groundHit.point.x, groundHit.point.z);
       return;
     }
@@ -529,10 +569,14 @@ renderer.domElement.addEventListener('pointermove', ev => {
   pointerToNDC(ev);
   raycaster.setFromCamera(mouse, camera);
 
-  if (terrainEditing && ui.terrainEditToggle.checked) {
+  if (ui.terrainEditToggle.checked) {
     const groundHit = raycaster.intersectObject(terrainMesh)[0];
-    if (groundHit) editTerrainAt(groundHit.point.x, groundHit.point.z);
-    return;
+    if (groundHit) updateTerrainCursor(groundHit.point.x, groundHit.point.z, true);
+    else terrainCursor.visible = false;
+    if (terrainEditing && groundHit) {
+      editTerrainAt(groundHit.point.x, groundHit.point.z);
+      return;
+    }
   }
 
   if (!draggingStationId) return;
@@ -548,7 +592,13 @@ renderer.domElement.addEventListener('pointermove', ev => {
   }
 });
 
-function endDrag() { draggingStationId = null; terrainEditing = false; controls.enabled = true; }
+function endDrag() {
+  draggingStationId = null;
+  if (terrainEditing && terrainDirty) refreshTerrainAfterEdit();
+  terrainEditing = false;
+  terrainCursor.visible = false;
+  controls.enabled = true;
+}
 renderer.domElement.addEventListener('pointerup', endDrag);
 renderer.domElement.addEventListener('pointerleave', endDrag);
 
@@ -613,15 +663,16 @@ function simulate(dt) {
   const span = Math.max(1e-6, maxLvl - minLvl);
 
   for (const [eid, m] of edgeMeshById.entries()) {
-    const e = edges.find(x => x.id === eid); if (!e) continue;
+    const e = edgeById[eid]; if (!e) continue;
     const target = stationOutMap[e.from]?.[e.id] ?? 0;
     edgeState[e.id].q += (target - edgeState[e.id].q) * Math.min(1, dt * .62);
     const lv = ((stationState[e.from]?.level ?? stationMap[e.from].y) + (stationState[e.to]?.level ?? stationMap[e.to].y)) / 2;
     const ln = (lv - minLvl) / span;
     m.material.color.copy(edgeColor(edgeState[e.id].q, ln));
-    m.material.opacity = .40 + Math.min(.52, edgeState[e.id].q / 620);
-    m.scale.y = .72 + Math.min(1.2, edgeState[e.id].q / 520) * .58;
-    m.userData.flowTex.offset.x -= dt * 0.06 * Math.max(0.3, edgeState[e.id].q / 240);
+    m.material.opacity = .38 + Math.min(.56, edgeState[e.id].q / 620) + Math.sin(t * 1.9 + eid.length) * 0.015;
+    const pulse = 0.72 + Math.min(1.2, edgeState[e.id].q / 520) * .58 + Math.sin(t * 2.4 + edgeState[e.id].q * 0.01) * 0.015;
+    m.scale.y = pulse;
+    m.userData.flowTex.offset.x -= dt * 0.08 * Math.max(0.3, edgeState[e.id].q / 240);
   }
 
   let alarmCount = 0;
