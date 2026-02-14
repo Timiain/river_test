@@ -5,17 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>多闸门多河流站点沙盘</title>
   <style>
-    :root { color-scheme: dark; --panel: rgba(8,16,28,.82); --line: rgba(130,180,230,.35); }
+    :root { color-scheme: dark; --panel: rgba(8,16,28,.84); --line: rgba(130,180,230,.32); }
     * { box-sizing: border-box; }
     body { margin:0; overflow:hidden; background:#08111d; color:#d9edff; font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
     #app { position:fixed; inset:0; }
-    .hud { position:absolute; left:12px; top:12px; width:min(430px,95vw); z-index:5; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px; backdrop-filter: blur(8px); }
+    .hud { position:absolute; left:12px; top:12px; width:min(460px,96vw); max-height:96vh; overflow:auto; z-index:5; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px; backdrop-filter: blur(8px); }
     .hud h1 { margin:0 0 6px; font-size:17px; }
     .desc { font-size:12px; opacity:.86; margin-bottom:8px; }
-    .grid { display:grid; grid-template-columns:1fr auto; gap:6px 10px; align-items:center; font-size:12px; }
-    .grid input[type="range"] { grid-column:1 / -1; width:100%; margin:0 0 6px; accent-color:#59b6ff; }
-    .stats { margin-top:8px; padding-top:8px; border-top:1px solid var(--line); font-size:12px; line-height:1.45; }
-    #records { margin-top:8px; max-height:180px; overflow:auto; white-space:pre; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:11px; background:rgba(8,14,24,.45); padding:8px; border:1px solid rgba(100,150,210,.25); border-radius:8px; }
+    .grid { display:grid; grid-template-columns:1fr auto; gap:5px 10px; align-items:center; font-size:12px; }
+    .grid input[type="range"], .grid select, .grid input[type="text"], .grid input[type="number"] { grid-column:1 / -1; width:100%; margin:0 0 6px; }
+    .stats,.panel { margin-top:8px; padding-top:8px; border-top:1px solid var(--line); font-size:12px; line-height:1.45; }
+    .panel h3 { margin:0 0 6px; font-size:13px; }
+    #records { margin-top:6px; max-height:130px; overflow:auto; white-space:pre; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:11px; background:rgba(8,14,24,.45); padding:8px; border:1px solid rgba(100,150,210,.25); border-radius:8px; }
+    button { border:1px solid #4c82b5; background:#143150; color:#d8edff; border-radius:6px; padding:6px 8px; cursor:pointer; }
+    button:hover { background:#1b426b; }
     .tip { position:absolute; right:12px; bottom:12px; z-index:5; font-size:12px; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:rgba(8,14,24,.65); }
   </style>
 </head>
@@ -23,295 +26,272 @@
 <div id="app"></div>
 <section class="hud">
   <h1>省域多站点河网-多闸门动力学沙盘</h1>
-  <div class="desc">西高东低 + 强起伏地形 · 河流按站点曲线连接 · 站点支持多入多出并记录数据</div>
+  <div class="desc">地形增强起伏并贴合河道；点击站点查看详情；可新增站点并通过面板创建河流连接。</div>
   <div class="grid">
-    <label for="rain">区域降雨 (mm/h)</label><span id="rainV">44</span>
-    <input id="rain" type="range" min="0" max="150" value="44" />
-    <label for="temp">气温 (°C)</label><span id="tempV">22</span>
-    <input id="temp" type="range" min="-10" max="42" value="22" />
-    <label for="wind">风速 (m/s)</label><span id="windV">5</span>
-    <input id="wind" type="range" min="0" max="20" value="5" />
-    <label for="gateA">闸门A（上游库）%</label><span id="gateAV">60</span>
-    <input id="gateA" type="range" min="0" max="100" value="60" />
-    <label for="gateB">闸门B（中游坝）%</label><span id="gateBV">45</span>
-    <input id="gateB" type="range" min="0" max="100" value="45" />
-    <label for="gateC">闸门C（支流闸）%</label><span id="gateCV">52</span>
-    <input id="gateC" type="range" min="0" max="100" value="52" />
+    <label for="rain">区域降雨 (mm/h)</label><span id="rainV">44</span><input id="rain" type="range" min="0" max="150" value="44" />
+    <label for="temp">气温 (°C)</label><span id="tempV">22</span><input id="temp" type="range" min="-10" max="42" value="22" />
+    <label for="wind">风速 (m/s)</label><span id="windV">5</span><input id="wind" type="range" min="0" max="20" value="5" />
+    <label for="gateA">闸门A（上游库）%</label><span id="gateAV">60</span><input id="gateA" type="range" min="0" max="100" value="60" />
+    <label for="gateB">闸门B（中游坝）%</label><span id="gateBV">45</span><input id="gateB" type="range" min="0" max="100" value="45" />
+    <label for="gateC">闸门C（支流闸）%</label><span id="gateCV">52</span><input id="gateC" type="range" min="0" max="100" value="52" />
   </div>
   <div class="stats">
     <div>总站点数: <strong id="stationCount">0</strong>，河段数: <strong id="edgeCount">0</strong></div>
     <div>总入流: <strong id="totalIn">0</strong> m³/s，总出流: <strong id="totalOut">0</strong> m³/s</div>
-    <div>分支站 SPL1 出流比: <strong id="splitRatio">0 / 0</strong></div>
+    <div>分支站 SPL1 出流比: <strong id="splitRatio">0 / 0 / 0</strong></div>
     <div>闸前/闸后流速(中游坝): <strong id="vel">0 / 0</strong> m/s</div>
     <div>气候状态: <strong id="climate">--</strong></div>
+    <div id="records"></div>
   </div>
-  <div id="records"></div>
+
+  <div class="panel">
+    <h3>站点详情（点击3D站点）</h3>
+    <div id="stationInfo">未选择站点</div>
+    <div class="grid">
+      <label for="edgeFrom">新增河段 From</label><select id="edgeFrom"></select>
+      <label for="edgeTo">新增河段 To</label><select id="edgeTo"></select>
+      <label for="edgeLift">曲线抬升</label><input id="edgeLift" type="number" value="3" min="0" max="15" step="0.5" />
+      <button id="addEdgeBtn" type="button">新增河流连接</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>新增站点</h3>
+    <div class="grid">
+      <label for="newId">站点ID</label><input id="newId" type="text" value="NEW_1" />
+      <label for="newName">站点名称</label><input id="newName" type="text" value="新站点" />
+      <label for="newType">站点类型</label>
+      <select id="newType"><option value="normal">normal</option><option value="junction">junction</option><option value="split">split</option><option value="gate">gate</option><option value="sink">sink</option><option value="source">source</option></select>
+      <label for="newX">X坐标</label><input id="newX" type="number" value="10" step="1" />
+      <label for="newZ">Z坐标</label><input id="newZ" type="number" value="-10" step="1" />
+      <button id="addStationBtn" type="button">添加站点（自动贴地）</button>
+    </div>
+  </div>
 </section>
-<div class="tip">拖拽旋转查看站点与河段网络，流量颜色：蓝低 → 红高</div>
+<div class="tip">拖拽旋转 · 点击站点查看/编辑链接</div>
 
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/"}}</script>
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-const root = document.getElementById('app');
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x091425);
-scene.fog = new THREE.Fog(0x091425, 100, 320);
-
-const camera = new THREE.PerspectiveCamera(56, innerWidth / innerHeight, 0.1, 900);
-camera.position.set(85, 78, 120);
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+scene.fog = new THREE.Fog(0x091425, 100, 340);
+const camera = new THREE.PerspectiveCamera(56, innerWidth/innerHeight, .1, 900);
+camera.position.set(90, 82, 125);
+const renderer = new THREE.WebGLRenderer({antialias:true});
 renderer.setSize(innerWidth, innerHeight);
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(2, devicePixelRatio));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-root.appendChild(renderer.domElement);
+document.getElementById('app').appendChild(renderer.domElement);
 
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(0, 12, 0);
-controls.enableDamping = true;
+controls.target.set(0,14,0); controls.enableDamping = true;
+scene.add(new THREE.AmbientLight(0x9cc2ff, .58));
+const sun = new THREE.DirectionalLight(0xffffff, 1.28); sun.position.set(90,110,22); scene.add(sun);
 
-scene.add(new THREE.AmbientLight(0x9cc2ff, 0.56));
-const sun = new THREE.DirectionalLight(0xffffff, 1.3);
-sun.position.set(85, 110, 18);
-scene.add(sun);
+const sandbox = new THREE.Group(); scene.add(sandbox);
+const provinceSize = {x:245, z:150};
+const terrainGeo = new THREE.PlaneGeometry(provinceSize.x, provinceSize.z, 240, 150);
+terrainGeo.rotateX(-Math.PI/2);
+const terrainPos = terrainGeo.attributes.position;
 
-const sandbox = new THREE.Group();
-scene.add(sandbox);
-
-const provinceSize = { x: 240, z: 145 };
-const terrainGeo = new THREE.PlaneGeometry(provinceSize.x, provinceSize.z, 220, 130);
-terrainGeo.rotateX(-Math.PI / 2);
-const pos = terrainGeo.attributes.position;
-
-function bump(x, z, cx, cz, sx, sz, h) {
-  const dx = (x - cx) / sx;
-  const dz = (z - cz) / sz;
-  return h * Math.exp(-(dx * dx + dz * dz));
+const bump = (x,z,cx,cz,sx,sz,h) => h*Math.exp(-(((x-cx)/sx)**2+((z-cz)/sz)**2));
+function terrainHeight(x,z){
+  const slope = (1 - (x + provinceSize.x/2)/provinceSize.x)*34;
+  const waves = 4.2*Math.sin(x*0.12)+3.5*Math.sin(z*0.18)+2.4*Math.sin(x*0.25+z*0.14)+1.6*Math.sin(z*0.32-x*0.1);
+  const ridges = bump(x,z,-95,-40,24,16,18)+bump(x,z,-78,28,20,14,15)+bump(x,z,-45,-8,22,16,12)+bump(x,z,-15,35,26,18,7);
+  const valleys = -6.2*Math.exp(-((x-56)/48)**2) - 3.2*Math.exp(-((z+6)/50)**2);
+  return slope + waves + ridges + valleys;
 }
-
-for (let i = 0; i < pos.count; i++) {
-  const x = pos.getX(i), z = pos.getZ(i);
-  const slope = (1 - (x + provinceSize.x / 2) / provinceSize.x) * 33;
-  const waves = 3.3 * Math.sin(x * 0.11) + 2.8 * Math.sin(z * 0.17) + 1.5 * Math.sin(x * 0.21 + z * 0.16);
-  const ridges = bump(x, z, -92, -38, 28, 18, 16) + bump(x, z, -76, 30, 24, 16, 13) + bump(x, z, -40, -6, 22, 16, 10);
-  const valleys = -4.6 * Math.exp(-Math.pow((x - 52) / 48, 2)) - 2.7 * Math.exp(-Math.pow((z + 12) / 55, 2));
-  pos.setY(i, slope + waves + ridges + valleys);
-}
+for(let i=0;i<terrainPos.count;i++){ terrainPos.setY(i, terrainHeight(terrainPos.getX(i), terrainPos.getZ(i))); }
 terrainGeo.computeVertexNormals();
+sandbox.add(new THREE.Mesh(terrainGeo, new THREE.MeshStandardMaterial({color:0x576f84, roughness:.96, metalness:.03})));
+const grid = new THREE.GridHelper(270,27,0x36506d,0x223648); grid.position.y=.2; sandbox.add(grid);
 
-sandbox.add(new THREE.Mesh(terrainGeo, new THREE.MeshStandardMaterial({ color: 0x556c80, roughness: 0.96, metalness: 0.04 })));
-const grid = new THREE.GridHelper(260, 26, 0x37506e, 0x24384d); grid.position.y = 0.2; sandbox.add(grid);
+let stations = [
+  { id:'SRC_WN', name:'西北源', x:-108, z:34, type:'source' }, { id:'SRC_WS', name:'西南源', x:-108, z:-34, type:'source' },
+  { id:'SRC_MW', name:'西部中源', x:-94, z:-2, type:'source' }, { id:'GATE_A', name:'上游库闸A', x:-54, z:22, type:'gate', gate:'gateA' },
+  { id:'JN_1', name:'北支汇入站', x:-44, z:8, type:'junction' }, { id:'GATE_C', name:'南支闸C', x:-46, z:-28, type:'gate', gate:'gateC' },
+  { id:'SPL1', name:'分流站SPL1', x:-8, z:0, type:'split', ratio:[0.52,0.30,0.18] }, { id:'MID_1', name:'东中站1', x:24, z:14, type:'normal' },
+  { id:'GATE_B', name:'中游坝闸B', x:42, z:-4, type:'gate', gate:'gateB' }, { id:'MID_2', name:'东中站2', x:52, z:22, type:'normal' },
+  { id:'CON_1', name:'总汇站', x:70, z:4, type:'junction' }, { id:'OUT_E', name:'东部出境', x:106, z:2, type:'sink' }
+].map(s=>({...s, y:terrainHeight(s.x,s.z)+1.9}));
 
-const stations = [
-  { id:'SRC_WN', name:'西北源', pos:[-108, 47, 34], type:'source' },
-  { id:'SRC_WS', name:'西南源', pos:[-108, 44, -34], type:'source' },
-  { id:'SRC_MW', name:'西部中源', pos:[-94, 36, -2], type:'source' },
-  { id:'GATE_A', name:'上游库闸A', pos:[-54, 30, 22], type:'gate', gate:'gateA' },
-  { id:'JN_1', name:'北支汇入站', pos:[-44, 27, 8], type:'junction' },
-  { id:'GATE_C', name:'南支闸C', pos:[-46, 23, -28], type:'gate', gate:'gateC' },
-  { id:'SPL1', name:'分流站SPL1', pos:[-8, 18, 0], type:'split', ratio:[0.52,0.30,0.18] },
-  { id:'MID_1', name:'东中站1', pos:[24, 14, 14], type:'normal' },
-  { id:'GATE_B', name:'中游坝闸B', pos:[42, 12, -4], type:'gate', gate:'gateB' },
-  { id:'MID_2', name:'东中站2', pos:[52, 10, 22], type:'normal' },
-  { id:'CON_1', name:'总汇站', pos:[70, 8, 4], type:'junction' },
-  { id:'OUT_E', name:'东部出境', pos:[106, 6, 2], type:'sink' }
-];
-
-const edges = [
-  { id:'e1', from:'SRC_WN', to:'GATE_A', lift:5 },
-  { id:'e2', from:'SRC_MW', to:'JN_1', lift:3 },
-  { id:'e3', from:'GATE_A', to:'JN_1', lift:3 },
-  { id:'e4', from:'SRC_WS', to:'GATE_C', lift:4 },
-  { id:'e5', from:'GATE_C', to:'SPL1', lift:3 },
-  { id:'e6', from:'JN_1', to:'SPL1', lift:2 },
-  { id:'e7', from:'SPL1', to:'MID_1', lift:2 },
-  { id:'e8', from:'SPL1', to:'GATE_B', lift:2 },
-  { id:'e9', from:'SPL1', to:'MID_2', lift:2 },
-  { id:'e10', from:'MID_1', to:'CON_1', lift:2 },
-  { id:'e11', from:'GATE_B', to:'CON_1', lift:2 },
-  { id:'e12', from:'MID_2', to:'CON_1', lift:2 },
+let edges = [
+  { id:'e1', from:'SRC_WN', to:'GATE_A', lift:5 }, { id:'e2', from:'SRC_MW', to:'JN_1', lift:3 }, { id:'e3', from:'GATE_A', to:'JN_1', lift:3 },
+  { id:'e4', from:'SRC_WS', to:'GATE_C', lift:4 }, { id:'e5', from:'GATE_C', to:'SPL1', lift:3 }, { id:'e6', from:'JN_1', to:'SPL1', lift:2 },
+  { id:'e7', from:'SPL1', to:'MID_1', lift:2 }, { id:'e8', from:'SPL1', to:'GATE_B', lift:2 }, { id:'e9', from:'SPL1', to:'MID_2', lift:2 },
+  { id:'e10', from:'MID_1', to:'CON_1', lift:2 }, { id:'e11', from:'GATE_B', to:'CON_1', lift:2 }, { id:'e12', from:'MID_2', to:'CON_1', lift:2 },
   { id:'e13', from:'CON_1', to:'OUT_E', lift:2 }
 ];
 
-const stationMap = Object.fromEntries(stations.map(s => [s.id, s]));
-const incoming = Object.fromEntries(stations.map(s => [s.id, []]));
-const outgoing = Object.fromEntries(stations.map(s => [s.id, []]));
-edges.forEach(e => { incoming[e.to].push(e.id); outgoing[e.from].push(e.id); });
-
-const stationState = Object.fromEntries(stations.map(s => [s.id, { q: 0, level: s.pos[1], history: [] }]));
-const edgeState = Object.fromEntries(edges.map(e => [e.id, { q: 0 }]));
-
-function flowColor(q) {
-  const n = Math.max(0, Math.min(1, q / 340));
-  const c = new THREE.Color();
-  c.setHSL(0.60 - 0.58 * n, 0.85, 0.55);
-  return c;
-}
-
-const edgeMeshes = {};
-for (const e of edges) {
-  const a = stationMap[e.from].pos;
-  const b = stationMap[e.to].pos;
-  const c1 = new THREE.Vector3((a[0] * 2 + b[0]) / 3, (a[1] + b[1]) / 2 + e.lift, (a[2] * 2 + b[2]) / 3);
-  const c2 = new THREE.Vector3((a[0] + b[0] * 2) / 3, (a[1] + b[1]) / 2 + e.lift, (a[2] + b[2] * 2) / 3);
-  const curve = new THREE.CatmullRomCurve3([new THREE.Vector3(...a), c1, c2, new THREE.Vector3(...b)]);
-  const mesh = new THREE.Mesh(
-    new THREE.TubeGeometry(curve, 90, 1.25, 12, false),
-    new THREE.MeshPhysicalMaterial({ color: 0x49b6ff, transparent: true, opacity: .66, roughness:.22, transmission:.32, clearcoat:.5 })
-  );
-  sandbox.add(mesh);
-  edgeMeshes[e.id] = mesh;
-}
-
-for (const s of stations) {
-  const color = s.type === 'gate' ? 0xffbf66 : s.type === 'split' ? 0x9ff2ff : s.type === 'junction' ? 0x8cf7be : s.type === 'sink' ? 0xff7a7a : 0xc2d9ff;
-  const node = new THREE.Mesh(new THREE.SphereGeometry(1.8, 14, 14), new THREE.MeshStandardMaterial({ color, emissive: 0x15314a, emissiveIntensity: .45 }));
-  node.position.set(...s.pos);
-  sandbox.add(node);
-  if (s.type === 'gate') {
-    const gateBar = new THREE.Mesh(new THREE.BoxGeometry(1.1, 5.2, 2.8), new THREE.MeshStandardMaterial({ color: 0xcfd7df, metalness: .45, roughness: .42 }));
-    gateBar.position.set(s.pos[0] + 1.8, s.pos[1], s.pos[2]);
-    gateBar.userData.gateKey = s.gate;
-    sandbox.add(gateBar);
-    s.gateMesh = gateBar;
-  }
-}
+let stationMeshById = new Map(), edgeMeshById = new Map(), gateMeshById = new Map();
+let stationMap = {}, incoming={}, outgoing={}, stationState={}, edgeState={};
+const raycaster = new THREE.Raycaster(); const mouse = new THREE.Vector2();
+let selectedStationId = null;
 
 const ui = {
-  rain: document.getElementById('rain'), temp: document.getElementById('temp'), wind: document.getElementById('wind'),
-  gateA: document.getElementById('gateA'), gateB: document.getElementById('gateB'), gateC: document.getElementById('gateC'),
-  rainV: document.getElementById('rainV'), tempV: document.getElementById('tempV'), windV: document.getElementById('windV'),
-  gateAV: document.getElementById('gateAV'), gateBV: document.getElementById('gateBV'), gateCV: document.getElementById('gateCV'),
-  stationCount: document.getElementById('stationCount'), edgeCount: document.getElementById('edgeCount'),
-  totalIn: document.getElementById('totalIn'), totalOut: document.getElementById('totalOut'), splitRatio: document.getElementById('splitRatio'),
-  vel: document.getElementById('vel'), climate: document.getElementById('climate'), records: document.getElementById('records')
+  rain:document.getElementById('rain'), temp:document.getElementById('temp'), wind:document.getElementById('wind'), gateA:document.getElementById('gateA'), gateB:document.getElementById('gateB'), gateC:document.getElementById('gateC'),
+  rainV:document.getElementById('rainV'), tempV:document.getElementById('tempV'), windV:document.getElementById('windV'), gateAV:document.getElementById('gateAV'), gateBV:document.getElementById('gateBV'), gateCV:document.getElementById('gateCV'),
+  stationCount:document.getElementById('stationCount'), edgeCount:document.getElementById('edgeCount'), totalIn:document.getElementById('totalIn'), totalOut:document.getElementById('totalOut'), splitRatio:document.getElementById('splitRatio'), vel:document.getElementById('vel'), climate:document.getElementById('climate'), records:document.getElementById('records'),
+  stationInfo:document.getElementById('stationInfo'), edgeFrom:document.getElementById('edgeFrom'), edgeTo:document.getElementById('edgeTo'), edgeLift:document.getElementById('edgeLift'), addEdgeBtn:document.getElementById('addEdgeBtn'),
+  newId:document.getElementById('newId'), newName:document.getElementById('newName'), newType:document.getElementById('newType'), newX:document.getElementById('newX'), newZ:document.getElementById('newZ'), addStationBtn:document.getElementById('addStationBtn')
 };
 
-['rain','temp','wind','gateA','gateB','gateC'].forEach(k => ui[k].addEventListener('input', () => ui[k + 'V'].textContent = ui[k].value));
-ui.stationCount.textContent = stations.length;
-ui.edgeCount.textContent = edges.length;
+['rain','temp','wind','gateA','gateB','gateC'].forEach(k=>ui[k].addEventListener('input', ()=>ui[k+'V'].textContent = ui[k].value));
 
-let t = 0;
-const clock = new THREE.Clock();
-
-const topoOrder = ['SRC_WN','SRC_WS','SRC_MW','GATE_A','JN_1','GATE_C','SPL1','MID_1','GATE_B','MID_2','CON_1','OUT_E'];
-
-function climateLabel(r, temp) {
-  if (r > 95) return '暴雨洪峰过程';
-  if (r > 55) return temp > 30 ? '暖湿强对流' : '持续强降雨';
-  if (temp < 0) return '低温融雪偏弱';
-  if (temp > 35) return '高温蒸发增强';
-  return '平稳过渡天气';
+function rebuildGraph(){
+  stationMap = Object.fromEntries(stations.map(s=>[s.id,s]));
+  incoming = Object.fromEntries(stations.map(s=>[s.id,[]]));
+  outgoing = Object.fromEntries(stations.map(s=>[s.id,[]]));
+  for(const e of edges){ if(incoming[e.to]) incoming[e.to].push(e.id); if(outgoing[e.from]) outgoing[e.from].push(e.id); }
+  for(const s of stations){ if(!stationState[s.id]) stationState[s.id] = { q:0, level:s.y, history:[] }; }
+  for(const e of edges){ if(!edgeState[e.id]) edgeState[e.id] = { q:0 }; }
 }
 
-function simulate(dt) {
-  t += dt;
-  const rain = Number(ui.rain.value), temp = Number(ui.temp.value), wind = Number(ui.wind.value);
-  const gates = { gateA: Number(ui.gateA.value) / 100, gateB: Number(ui.gateB.value) / 100, gateC: Number(ui.gateC.value) / 100 };
-  const westRain = rain * (1.2 + 0.12 * Math.sin(t * 0.14));
-  const eastRain = rain * (0.68 + 0.09 * Math.sin(t * 0.09 + .8));
+function flowColor(q){ const n=Math.max(0,Math.min(1,q/340)); const c=new THREE.Color(); c.setHSL(.60-.58*n,.85,.55); return c; }
+function clearMeshes(){ for(const m of edgeMeshById.values()) sandbox.remove(m); for(const m of stationMeshById.values()) sandbox.remove(m); for(const m of gateMeshById.values()) sandbox.remove(m); edgeMeshById.clear(); stationMeshById.clear(); gateMeshById.clear(); }
 
-  const stationOutMap = {};
-  let totalIn = 0;
-  let totalOut = 0;
-
-  for (const sid of topoOrder) {
-    const s = stationMap[sid];
-    const ss = stationState[sid];
-
-    const inQ = incoming[sid].reduce((sum, eid) => sum + edgeState[eid].q, 0);
-    const elevFactor = Math.max(0.45, Math.min(1.45, s.pos[1] / 40));
-    const localRain = (s.pos[0] < -20 ? westRain : eastRain) * (0.8 + 0.4 * elevFactor);
-    const localRunoff = localRain / 1000 / 3600 * (180000 + 9000 * elevFactor) * (0.24 + localRain / 380);
-    const melt = Math.max(0, temp - 7) * (s.pos[1] > 20 ? 1.2 : 0.45);
-
-    let outTotal = 0;
-    const avail = inQ + localRunoff + melt;
-    const outEdges = outgoing[sid];
-
-    if (s.type === 'source') {
-      outTotal = avail;
-    } else if (s.type === 'gate') {
-      const open = gates[s.gate];
-      const cap = 20 + open * (240 + s.pos[1] * 2.4);
-      ss.level += (avail - Math.min(avail, cap)) * dt * 0.004;
-      ss.level = Math.max(s.pos[1] - 2.2, Math.min(s.pos[1] + 8.5, ss.level));
-      outTotal = Math.min(avail + Math.max(0, ss.level - s.pos[1]) * 4.2, cap + 30);
-      if (s.gateMesh) s.gateMesh.position.y = s.pos[1] - 1.8 + open * 5.2;
-    } else if (s.type === 'split') {
-      outTotal = avail * (0.92 - wind * 0.003);
-    } else if (s.type === 'sink') {
-      outTotal = 0;
-    } else {
-      outTotal = avail * 0.95;
-    }
-
-    totalIn += inQ;
-    totalOut += outTotal;
-    ss.q += (avail - ss.q) * Math.min(1, dt * 0.65);
-
-    if (outEdges.length === 0) {
-      stationOutMap[sid] = {};
-    } else if (s.type === 'split' && outEdges.length >= 3) {
-      const ratio = s.ratio;
-      stationOutMap[sid] = { [outEdges[0]]: outTotal * ratio[0], [outEdges[1]]: outTotal * ratio[1], [outEdges[2]]: outTotal * ratio[2] };
-    } else if (outEdges.length > 1) {
-      const each = outTotal / outEdges.length;
-      stationOutMap[sid] = Object.fromEntries(outEdges.map(eid => [eid, each]));
-    } else {
-      stationOutMap[sid] = { [outEdges[0]]: outTotal };
-    }
-
-    ss.history.push({ t, inQ, out: outTotal, level: ss.level });
-    if (ss.history.length > 120) ss.history.shift();
+function buildMeshes(){
+  clearMeshes();
+  for(const e of edges){
+    const a=stationMap[e.from], b=stationMap[e.to]; if(!a||!b) continue;
+    const mx=(a.x+b.x)/2, mz=(a.z+b.z)/2, my=Math.max(a.y,b.y, terrainHeight(mx,mz)+1.4)+e.lift; // 贴地抬升
+    const c1 = new THREE.Vector3((a.x*2+b.x)/3, my, (a.z*2+b.z)/3);
+    const c2 = new THREE.Vector3((a.x+b.x*2)/3, my, (a.z+b.z*2)/3);
+    const curve = new THREE.CatmullRomCurve3([new THREE.Vector3(a.x,a.y,a.z), c1, c2, new THREE.Vector3(b.x,b.y,b.z)]);
+    const mesh = new THREE.Mesh(new THREE.TubeGeometry(curve,90,1.25,12,false), new THREE.MeshPhysicalMaterial({color:0x49b6ff, transparent:true, opacity:.66, roughness:.22, transmission:.32, clearcoat:.5}));
+    sandbox.add(mesh); edgeMeshById.set(e.id, mesh);
   }
-
-  for (const e of edges) {
-    const target = stationOutMap[e.from]?.[e.id] ?? 0;
-    edgeState[e.id].q += (target - edgeState[e.id].q) * Math.min(1, dt * 0.62);
-    const mesh = edgeMeshes[e.id];
-    mesh.material.color.copy(flowColor(edgeState[e.id].q));
-    mesh.material.opacity = 0.42 + Math.min(0.5, edgeState[e.id].q / 620);
-    mesh.scale.y = 0.72 + Math.min(1.2, edgeState[e.id].q / 520) * 0.58;
+  for(const s of stations){
+    const color = s.type==='gate'?0xffbf66:s.type==='split'?0x9ff2ff:s.type==='junction'?0x8cf7be:s.type==='sink'?0xff7a7a:0xc2d9ff;
+    const node = new THREE.Mesh(new THREE.SphereGeometry(1.9,14,14), new THREE.MeshStandardMaterial({color, emissive:0x15314a, emissiveIntensity:.45}));
+    node.position.set(s.x,s.y,s.z); node.userData.stationId = s.id;
+    sandbox.add(node); stationMeshById.set(s.id,node);
+    if(s.type==='gate'){
+      const gateBar = new THREE.Mesh(new THREE.BoxGeometry(1.1,5.2,2.8), new THREE.MeshStandardMaterial({color:0xcfd7df, metalness:.45, roughness:.42}));
+      gateBar.position.set(s.x+1.8,s.y,s.z); sandbox.add(gateBar); gateMeshById.set(s.id, gateBar);
+    }
   }
-
-  const qPre = edgeState.e8.q;
-  const qPost = edgeState.e11.q;
-  const vPre = qPre / (28 + Number(ui.gateB.value) * 0.2);
-  const vPost = qPost / (16 + Number(ui.gateB.value) * 0.12);
-
-  ui.totalIn.textContent = totalIn.toFixed(1);
-  ui.totalOut.textContent = totalOut.toFixed(1);
-  ui.splitRatio.textContent = `${(edgeState.e7.q).toFixed(1)} / ${(edgeState.e8.q).toFixed(1)} / ${(edgeState.e9.q).toFixed(1)}`;
-  ui.vel.textContent = `${vPre.toFixed(2)} / ${vPost.toFixed(2)}`;
-  ui.climate.textContent = climateLabel(rain, temp);
-
-  const focusStations = ['GATE_A','SPL1','GATE_B','CON_1','OUT_E'];
-  ui.records.textContent = focusStations.map(id => {
-    const rec = stationState[id].history.at(-1);
-    return `${id.padEnd(7)} in:${(rec?.inQ ?? 0).toFixed(1).padStart(6)} out:${(rec?.out ?? 0).toFixed(1).padStart(6)} level:${(rec?.level ?? stationMap[id].pos[1]).toFixed(2).padStart(6)}`;
-  }).join('\n');
-
-  const skyMix = Math.max(0, Math.min(1, rain * 0.008 + temp * 0.02));
-  scene.background = new THREE.Color().setHSL(0.58 - skyMix * 0.13, 0.45, 0.1 + skyMix * 0.08);
-  sun.intensity = 1.38 - Math.min(0.92, rain / 150);
+  ui.stationCount.textContent = stations.length;
+  ui.edgeCount.textContent = edges.length;
 }
 
-function animate() {
-  const dt = Math.min(0.05, clock.getDelta()) * 8.2;
-  simulate(dt);
-  controls.update();
-  renderer.render(scene, camera);
-  requestAnimationFrame(animate);
+function refreshSelectors(){
+  const options = stations.map(s=>`<option value="${s.id}">${s.id}(${s.name})</option>`).join('');
+  ui.edgeFrom.innerHTML = options; ui.edgeTo.innerHTML = options;
 }
-animate();
 
-addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
+function showStationInfo(id){
+  selectedStationId = id;
+  for(const [sid,m] of stationMeshById.entries()) m.scale.setScalar(sid===id?1.35:1);
+  const s = stationMap[id];
+  const ins = incoming[id]?.join(', ') || '无';
+  const outs = outgoing[id]?.join(', ') || '无';
+  const rec = stationState[id].history.at(-1);
+  ui.stationInfo.textContent = `${s.id} ${s.name}\n类型:${s.type}\n坐标:(${s.x.toFixed(1)}, ${s.y.toFixed(1)}, ${s.z.toFixed(1)})\n输入河段:${ins}\n输出河段:${outs}\n当前入流:${(rec?.inQ??0).toFixed(1)}  当前出流:${(rec?.out??0).toFixed(1)}\n水位:${(rec?.level??s.y).toFixed(2)}`;
+  ui.edgeFrom.value = id;
+}
+
+rebuildGraph(); buildMeshes(); refreshSelectors(); showStationInfo(stations[0].id);
+
+ui.addStationBtn.addEventListener('click', ()=>{
+  const id = ui.newId.value.trim(); if(!id || stationMap[id]) return;
+  const x = Number(ui.newX.value), z = Number(ui.newZ.value);
+  const y = terrainHeight(x,z)+1.9;
+  const type = ui.newType.value;
+  const station = { id, name: ui.newName.value.trim() || id, x, z, y, type };
+  if(type === 'split') station.ratio=[0.5,0.3,0.2];
+  if(type === 'gate') station.gate='gateB';
+  stations.push(station);
+  rebuildGraph(); buildMeshes(); refreshSelectors(); showStationInfo(id);
 });
+
+ui.addEdgeBtn.addEventListener('click', ()=>{
+  const from = ui.edgeFrom.value, to = ui.edgeTo.value; if(!from || !to || from===to) return;
+  const id = `e${edges.length+1}`;
+  edges.push({id, from, to, lift:Number(ui.edgeLift.value)||2});
+  edgeState[id] = { q: 0 };
+  rebuildGraph(); buildMeshes(); showStationInfo(selectedStationId||from);
+});
+
+renderer.domElement.addEventListener('pointerdown', (ev)=>{
+  const r = renderer.domElement.getBoundingClientRect();
+  mouse.x = ((ev.clientX-r.left)/r.width)*2-1; mouse.y = -((ev.clientY-r.top)/r.height)*2+1;
+  raycaster.setFromCamera(mouse, camera);
+  const hit = raycaster.intersectObjects([...stationMeshById.values()])[0];
+  if(hit?.object?.userData?.stationId) showStationInfo(hit.object.userData.stationId);
+});
+
+let t=0; const clock = new THREE.Clock();
+function climateLabel(r,temp){ if(r>95)return'暴雨洪峰过程'; if(r>55) return temp>30?'暖湿强对流':'持续强降雨'; if(temp<0)return'低温融雪偏弱'; if(temp>35)return'高温蒸发增强'; return'平稳过渡天气'; }
+
+function simulate(dt){
+  t += dt;
+  const rain=+ui.rain.value, temp=+ui.temp.value, wind=+ui.wind.value;
+  const gates={gateA:+ui.gateA.value/100, gateB:+ui.gateB.value/100, gateC:+ui.gateC.value/100};
+  const westRain = rain*(1.2+0.12*Math.sin(t*.14)), eastRain = rain*(0.68+0.09*Math.sin(t*.09+.8));
+  const topoOrder = stations.slice().sort((a,b)=>b.y-a.y).map(s=>s.id);
+  const stationOutMap = {}; let totalIn=0,totalOut=0;
+
+  for(const sid of topoOrder){
+    const s = stationMap[sid], ss = stationState[sid];
+    const inQ = (incoming[sid]||[]).reduce((sum,eid)=>sum+(edgeState[eid]?.q||0),0);
+    const elev = Math.max(.45, Math.min(1.5, s.y/42));
+    const localRain = (s.x < -20 ? westRain : eastRain) * (0.82 + 0.36*elev);
+    const runoff = localRain/1000/3600 * (180000 + 9000*elev)*(0.24 + localRain/380);
+    const melt = Math.max(0,temp-7)*(s.y>20?1.1:0.45);
+    const avail = inQ + runoff + melt;
+    const outEdges = outgoing[sid] || []; let out=0;
+
+    if(s.type==='source') out = avail;
+    else if(s.type==='gate'){
+      const open = gates[s.gate] ?? .5;
+      const cap = 20 + open*(240 + s.y*2.4);
+      ss.level += (avail - Math.min(avail, cap))*dt*.004;
+      ss.level = Math.max(s.y-2.2, Math.min(s.y+9.2, ss.level));
+      out = Math.min(avail + Math.max(0,ss.level-s.y)*4.2, cap+30);
+      const gateMesh = gateMeshById.get(s.id); if(gateMesh) gateMesh.position.y = s.y-1.8+open*5.2;
+    } else if(s.type==='split') out = avail*(0.92 - wind*0.003);
+    else if(s.type==='sink') out = 0;
+    else out = avail*0.95;
+
+    if(outEdges.length===0) stationOutMap[sid]={};
+    else if(s.type==='split' && outEdges.length>=3){ const r = s.ratio || [0.5,0.3,0.2]; stationOutMap[sid] = {[outEdges[0]]:out*r[0],[outEdges[1]]:out*r[1],[outEdges[2]]:out*r[2]}; }
+    else if(outEdges.length>1){ const each=out/outEdges.length; stationOutMap[sid]=Object.fromEntries(outEdges.map(eid=>[eid,each])); }
+    else stationOutMap[sid]={[outEdges[0]]:out};
+
+    totalIn += inQ; totalOut += out; ss.q += (avail-ss.q)*Math.min(1,dt*.65);
+    ss.history.push({t,inQ,out,level:ss.level}); if(ss.history.length>120) ss.history.shift();
+  }
+
+  for(const e of edges){
+    const target = stationOutMap[e.from]?.[e.id] ?? 0;
+    edgeState[e.id].q += (target-edgeState[e.id].q)*Math.min(1,dt*.62);
+    const m = edgeMeshById.get(e.id); if(!m) continue;
+    m.material.color.copy(flowColor(edgeState[e.id].q)); m.material.opacity = .42+Math.min(.5,edgeState[e.id].q/620); m.scale.y = .72+Math.min(1.2,edgeState[e.id].q/520)*.58;
+  }
+
+  const qPre=edgeState.e8?.q||0, qPost=edgeState.e11?.q||0;
+  ui.totalIn.textContent = totalIn.toFixed(1); ui.totalOut.textContent = totalOut.toFixed(1);
+  ui.splitRatio.textContent = `${(edgeState.e7?.q||0).toFixed(1)} / ${(edgeState.e8?.q||0).toFixed(1)} / ${(edgeState.e9?.q||0).toFixed(1)}`;
+  ui.vel.textContent = `${(qPre/(28+ +ui.gateB.value*.2)).toFixed(2)} / ${(qPost/(16+ +ui.gateB.value*.12)).toFixed(2)}`;
+  ui.climate.textContent = climateLabel(rain,temp);
+
+  const focus=['GATE_A','SPL1','GATE_B','CON_1','OUT_E'].filter(id=>stationState[id]);
+  ui.records.textContent = focus.map(id=>{ const rec=stationState[id].history.at(-1); return `${id.padEnd(7)} in:${(rec?.inQ??0).toFixed(1).padStart(6)} out:${(rec?.out??0).toFixed(1).padStart(6)} level:${(rec?.level??stationMap[id].y).toFixed(2).padStart(6)}`; }).join('\n');
+  if(selectedStationId && stationMap[selectedStationId]) showStationInfo(selectedStationId);
+
+  const skyMix = Math.max(0,Math.min(1,rain*.008+temp*.02));
+  scene.background = new THREE.Color().setHSL(.58-skyMix*.13,.45,.1+skyMix*.08);
+  sun.intensity = 1.38 - Math.min(.92,rain/150);
+}
+
+function animate(){ const dt=Math.min(.05,clock.getDelta())*8.2; simulate(dt); controls.update(); renderer.render(scene,camera); requestAnimationFrame(animate); }
+animate();
+addEventListener('resize',()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
 </script>
 </body>
 </html>
