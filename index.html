@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>动力学 3D 河流流量模拟器</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --panel-bg: rgba(12, 18, 30, 0.78);
+      --accent: #55b0ff;
+      --ok: #53f0c9;
+      --warn: #ffb35c;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: radial-gradient(circle at 25% 20%, #1f3349, #09121c 60%);
+      color: #d8ecff;
+    }
+
+    #app {
+      position: fixed;
+      inset: 0;
+    }
+
+    .hud {
+      position: absolute;
+      left: 18px;
+      top: 18px;
+      width: min(360px, 92vw);
+      background: var(--panel-bg);
+      border: 1px solid rgba(120, 170, 220, 0.4);
+      border-radius: 12px;
+      padding: 14px;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 16px 30px rgba(0, 0, 0, 0.35);
+      z-index: 5;
+    }
+
+    .hud h1 {
+      margin: 0 0 10px;
+      font-size: 18px;
+      letter-spacing: 1px;
+      color: #b8deff;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 6px 12px;
+      align-items: center;
+      font-size: 13px;
+    }
+
+    .grid input[type="range"] {
+      grid-column: 1 / -1;
+      width: 100%;
+      accent-color: var(--accent);
+      margin-bottom: 6px;
+    }
+
+    .stats {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(130, 170, 220, 0.3);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .legend {
+      margin-top: 8px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      font-size: 12px;
+      opacity: 0.92;
+    }
+
+    .sw {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      display: inline-block;
+    }
+
+    .tip {
+      position: absolute;
+      right: 12px;
+      bottom: 12px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      background: rgba(8, 14, 25, 0.6);
+      border: 1px solid rgba(120, 170, 220, 0.25);
+      z-index: 5;
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <section class="hud">
+    <h1>动力学 3D 河流流量模拟器</h1>
+    <div class="grid">
+      <label for="rain">降雨强度 (mm/h)</label><span id="rainV">42</span>
+      <input id="rain" type="range" min="0" max="100" value="42" step="1" />
+
+      <label for="temp">气温 (°C)</label><span id="tempV">23</span>
+      <input id="temp" type="range" min="-5" max="42" value="23" step="1" />
+
+      <label for="wind">风速 (m/s)</label><span id="windV">4</span>
+      <input id="wind" type="range" min="0" max="18" value="4" step="1" />
+
+      <label for="gate">水坝闸门开度 (%)</label><span id="gateV">55</span>
+      <input id="gate" type="range" min="0" max="100" value="55" step="1" />
+    </div>
+
+    <div class="stats">
+      <div>上游来水 <strong id="inflow">0</strong> m³/s</div>
+      <div>大坝出流 <strong id="outflow">0</strong> m³/s</div>
+      <div>库区水位 <strong id="level">0</strong> m</div>
+      <div>蒸发损失 <strong id="evap">0</strong> m³/s</div>
+      <div>天气状态 <strong id="climate">多云</strong></div>
+    </div>
+
+    <div class="legend">
+      <span class="sw"><i class="dot" style="background:#58b8ff"></i>河流流体</span>
+      <span class="sw"><i class="dot" style="background:#98ecff"></i>水位立方</span>
+      <span class="sw"><i class="dot" style="background:#ff9b52"></i>流量立方</span>
+      <span class="sw"><i class="dot" style="background:#8a8d99"></i>梯级山体/大坝</span>
+    </div>
+  </section>
+
+  <div class="tip">拖拽旋转 · 滚轮缩放 · 实时动力学更新</div>
+
+  <script type="module">
+    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js';
+    import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/controls/OrbitControls.js';
+
+    const root = document.getElementById('app');
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.Fog(0x0a1726, 55, 190);
+
+    const camera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.1, 600);
+    camera.position.set(34, 28, 46);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    root.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 6, 0);
+    controls.enableDamping = true;
+
+    scene.add(new THREE.AmbientLight(0x98b9ff, 0.58));
+
+    const sun = new THREE.DirectionalLight(0xffffff, 1.25);
+    sun.position.set(30, 42, 12);
+    sun.castShadow = true;
+    scene.add(sun);
+
+    const moon = new THREE.DirectionalLight(0x5f8cff, 0.35);
+    moon.position.set(-26, 18, -18);
+    scene.add(moon);
+
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(300, 300),
+      new THREE.MeshStandardMaterial({ color: 0x172436, roughness: 0.95, metalness: 0.04 })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -0.5;
+    scene.add(ground);
+
+    function makeStepMountain(x, y, z, w, h, d, color = 0x4f6074) {
+      const box = new THREE.Mesh(
+        new THREE.BoxGeometry(w, h, d),
+        new THREE.MeshStandardMaterial({ color, roughness: 0.92, metalness: 0.08 })
+      );
+      box.position.set(x, y, z);
+      scene.add(box);
+      return box;
+    }
+
+    const terraces = [];
+    for (let i = 0; i < 8; i++) {
+      const w = 42 - i * 3.2;
+      terraces.push(makeStepMountain(-10 + i * 4.2, 2.4 + i * 1.55, 0, w, 2.4, 58 - i * 4.8));
+    }
+    for (let i = 0; i < 7; i++) {
+      makeStepMountain(16 + i * 3.9, 2 + i * 1.35, -15, 32 - i * 2.8, 2.1, 18 - i * 1.5, 0x546578);
+      makeStepMountain(16 + i * 3.9, 2 + i * 1.35, 15, 32 - i * 2.8, 2.1, 18 - i * 1.5, 0x546578);
+    }
+
+    const riverCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-26, 12.2, 0),
+      new THREE.Vector3(-16, 10.5, 3),
+      new THREE.Vector3(-6, 8.4, 0),
+      new THREE.Vector3(5, 6.8, -3),
+      new THREE.Vector3(16, 5.2, 0),
+      new THREE.Vector3(27, 4, 2),
+      new THREE.Vector3(37, 3.1, 0)
+    ]);
+
+    const riverGeometry = new THREE.TubeGeometry(riverCurve, 250, 1.5, 22, false);
+    const riverMaterial = new THREE.MeshPhysicalMaterial({
+      color: 0x3faeff,
+      transparent: true,
+      opacity: 0.73,
+      roughness: 0.2,
+      transmission: 0.35,
+      metalness: 0.05,
+      clearcoat: 0.6
+    });
+    const riverMesh = new THREE.Mesh(riverGeometry, riverMaterial);
+    scene.add(riverMesh);
+
+    const waterTexture = new THREE.CanvasTexture((() => {
+      const c = document.createElement('canvas');
+      c.width = c.height = 256;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#2b74b7';
+      ctx.fillRect(0, 0, 256, 256);
+      for (let i = 0; i < 1200; i++) {
+        const x = Math.random() * 256;
+        const y = Math.random() * 256;
+        const r = Math.random() * 1.8;
+        ctx.fillStyle = `rgba(170,230,255,${Math.random() * 0.2})`;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      return c;
+    })());
+    waterTexture.wrapS = waterTexture.wrapT = THREE.RepeatWrapping;
+    waterTexture.repeat.set(8, 2);
+    riverMaterial.map = waterTexture;
+
+    const dam = new THREE.Group();
+    const wall = new THREE.Mesh(
+      new THREE.BoxGeometry(2.4, 7, 15),
+      new THREE.MeshStandardMaterial({ color: 0x8d939f, roughness: 0.7, metalness: 0.25 })
+    );
+    wall.position.set(21, 7.2, 0);
+    dam.add(wall);
+
+    const gate = new THREE.Mesh(
+      new THREE.BoxGeometry(0.9, 3.4, 7.2),
+      new THREE.MeshStandardMaterial({ color: 0xc9d3dd, roughness: 0.45, metalness: 0.55 })
+    );
+    gate.position.set(20.15, 5.4, 0);
+    dam.add(gate);
+
+    const spill = new THREE.Mesh(
+      new THREE.BoxGeometry(4.8, 0.5, 9),
+      new THREE.MeshStandardMaterial({ color: 0x2fa2ff, transparent: true, opacity: 0.52 })
+    );
+    spill.position.set(22.5, 4.2, 0);
+    dam.add(spill);
+    scene.add(dam);
+
+    const gaugeGroup = new THREE.Group();
+    const levelCube = new THREE.Mesh(
+      new THREE.BoxGeometry(1.6, 1.6, 1.6),
+      new THREE.MeshStandardMaterial({ color: 0x97ebff, emissive: 0x174760, emissiveIntensity: 0.45 })
+    );
+    levelCube.position.set(18, 5, -8);
+
+    const flowCube = new THREE.Mesh(
+      new THREE.BoxGeometry(1.6, 1.6, 1.6),
+      new THREE.MeshStandardMaterial({ color: 0xff9b52, emissive: 0x5f2f16, emissiveIntensity: 0.4 })
+    );
+    flowCube.position.set(23.5, 5, -8);
+
+    gaugeGroup.add(levelCube, flowCube);
+    scene.add(gaugeGroup);
+
+    const dropletsCount = 1400;
+    const rainPos = new Float32Array(dropletsCount * 3);
+    const rainVel = new Float32Array(dropletsCount);
+    for (let i = 0; i < dropletsCount; i++) {
+      rainPos[i * 3] = (Math.random() - 0.5) * 80;
+      rainPos[i * 3 + 1] = Math.random() * 32 + 8;
+      rainPos[i * 3 + 2] = (Math.random() - 0.5) * 50;
+      rainVel[i] = 0.08 + Math.random() * 0.16;
+    }
+    const rainGeo = new THREE.BufferGeometry();
+    rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
+    const rainMat = new THREE.PointsMaterial({ color: 0xb6e9ff, size: 0.08, transparent: true, opacity: 0.66 });
+    const rain = new THREE.Points(rainGeo, rainMat);
+    scene.add(rain);
+
+    const ui = {
+      rain: document.getElementById('rain'),
+      temp: document.getElementById('temp'),
+      wind: document.getElementById('wind'),
+      gate: document.getElementById('gate'),
+      rainV: document.getElementById('rainV'),
+      tempV: document.getElementById('tempV'),
+      windV: document.getElementById('windV'),
+      gateV: document.getElementById('gateV'),
+      inflow: document.getElementById('inflow'),
+      outflow: document.getElementById('outflow'),
+      level: document.getElementById('level'),
+      evap: document.getElementById('evap'),
+      climate: document.getElementById('climate')
+    };
+
+    for (const key of ['rain', 'temp', 'wind', 'gate']) {
+      ui[key].addEventListener('input', () => {
+        ui[key + 'V'].textContent = ui[key].value;
+      });
+    }
+
+    const state = {
+      reservoirLevel: 8.2,
+      inflow: 165,
+      outflow: 130,
+      evaporation: 9
+    };
+
+    let t = 0;
+    const clock = new THREE.Clock();
+
+    function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+    function climateLabel(rain, temp) {
+      if (rain > 75) return '暴雨';
+      if (rain > 45) return '强降雨';
+      if (rain > 20) return temp > 30 ? '湿热阵雨' : '多云有雨';
+      if (temp < 2) return '低温少雨';
+      if (temp > 33) return '炎热干燥';
+      return '温和多云';
+    }
+
+    function updateDynamics(dt) {
+      t += dt;
+      const rainInput = Number(ui.rain.value);
+      const tempInput = Number(ui.temp.value);
+      const windInput = Number(ui.wind.value);
+      const gateOpen = Number(ui.gate.value) / 100;
+
+      const catchmentArea = 3200000;
+      const runoffCoeff = 0.28 + rainInput / 300 + Math.sin(t * 0.22) * 0.03;
+      const rainMps = rainInput / 1000 / 3600;
+      const rainfallInflow = rainMps * catchmentArea * clamp(runoffCoeff, 0.25, 0.68);
+      const glacierPulse = Math.max(0, (tempInput - 7) * 1.35);
+      state.inflow += (rainfallInflow + glacierPulse - state.inflow) * Math.min(1, dt * 0.45);
+
+      const evapFactor = clamp((tempInput - 4) * 0.55 + windInput * 0.8, 0, 42);
+      state.evaporation += (evapFactor - state.evaporation) * Math.min(1, dt * 0.35);
+
+      const baseRelease = 24 + gateOpen * 210;
+      const headBoost = Math.max(0, state.reservoirLevel - 4.5) * 5.8;
+      state.outflow += (baseRelease + headBoost - state.outflow) * Math.min(1, dt * 0.6);
+
+      const dStorage = (state.inflow - state.outflow - state.evaporation) * dt;
+      state.reservoirLevel = clamp(state.reservoirLevel + dStorage / 1100, 3.5, 15.5);
+
+      const levelNorm = (state.reservoirLevel - 3.5) / 12;
+      gate.position.y = 4.5 + gateOpen * 2.8;
+      spill.scale.y = 0.4 + gateOpen * 2.2;
+      spill.position.y = 3.8 + levelNorm * 2.1;
+
+      levelCube.scale.y = 0.65 + levelNorm * 3.6;
+      levelCube.position.y = 4.2 + levelCube.scale.y;
+      flowCube.scale.y = 0.5 + clamp(state.outflow / 280, 0, 1.2) * 3.3;
+      flowCube.position.y = 4.2 + flowCube.scale.y;
+
+      const flowSpeed = clamp(state.outflow / 220, 0.3, 2.2);
+      waterTexture.offset.x -= dt * 0.4 * flowSpeed;
+      riverMaterial.opacity = 0.54 + 0.35 * clamp(state.reservoirLevel / 15, 0, 1);
+      riverMesh.scale.set(1, 0.75 + levelNorm * 0.8, 1);
+
+      rain.visible = rainInput > 3;
+      rainMat.opacity = clamp(rainInput / 100, 0.15, 0.85);
+      const pos = rainGeo.attributes.position.array;
+      for (let i = 0; i < dropletsCount; i++) {
+        pos[i * 3] += (windInput - 3) * 0.002;
+        pos[i * 3 + 1] -= rainVel[i] * (0.35 + rainInput / 120);
+        if (pos[i * 3 + 1] < 1.6) {
+          pos[i * 3 + 1] = Math.random() * 30 + 11;
+          pos[i * 3] = (Math.random() - 0.5) * 80;
+          pos[i * 3 + 2] = (Math.random() - 0.5) * 50;
+        }
+      }
+      rainGeo.attributes.position.needsUpdate = true;
+
+      ui.inflow.textContent = state.inflow.toFixed(1);
+      ui.outflow.textContent = state.outflow.toFixed(1);
+      ui.level.textContent = state.reservoirLevel.toFixed(2);
+      ui.evap.textContent = state.evaporation.toFixed(1);
+      ui.climate.textContent = climateLabel(rainInput, tempInput);
+
+      const skyMix = clamp((tempInput + rainInput * 0.15) / 52, 0, 1);
+      scene.background = new THREE.Color().setHSL(0.58 - skyMix * 0.1, 0.45, 0.09 + skyMix * 0.11);
+      moon.intensity = 0.25 + clamp(rainInput / 100, 0, 0.5);
+      sun.intensity = 1.4 - clamp(rainInput / 100, 0, 0.9);
+    }
+
+    function animate() {
+      const dt = Math.min(0.05, clock.getDelta());
+      updateDynamics(dt * 8.5);
+      terraces.forEach((t, i) => {
+        t.position.y += Math.sin(clock.elapsedTime * 0.2 + i) * 0.0015;
+      });
+      controls.update();
+      renderer.render(scene, camera);
+      requestAnimationFrame(animate);
+    }
+
+    animate();
+
+    addEventListener('resize', () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
+  </script>
+</body>
+</html>
