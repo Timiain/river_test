@@ -3,69 +3,64 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>省域多河流动力学沙盘</title>
+  <title>多闸门多河流站点沙盘</title>
   <style>
-    :root { color-scheme: dark; --panel: rgba(8,16,28,.8); --line: rgba(120,170,220,.35); }
+    :root { color-scheme: dark; --panel: rgba(8,16,28,.82); --line: rgba(130,180,230,.35); }
     * { box-sizing: border-box; }
-    body { margin: 0; overflow: hidden; font-family: "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; background: #08121d; color: #d8ecff; }
-    #app { position: fixed; inset: 0; }
-    .hud { position: absolute; left: 14px; top: 14px; width: min(390px,94vw); background: var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px; z-index:5; backdrop-filter: blur(8px); }
-    .hud h1 { margin:0 0 8px; font-size:17px; }
-    .sub { font-size: 12px; opacity:.85; margin-bottom: 8px; }
-    .grid { display:grid; grid-template-columns: 1fr auto; gap:6px 10px; align-items:center; font-size:12px; }
-    .grid input[type="range"] { grid-column:1 / -1; width:100%; margin:0 0 6px; accent-color:#5eb7ff; }
+    body { margin:0; overflow:hidden; background:#08111d; color:#d9edff; font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
+    #app { position:fixed; inset:0; }
+    .hud { position:absolute; left:12px; top:12px; width:min(430px,95vw); z-index:5; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px; backdrop-filter: blur(8px); }
+    .hud h1 { margin:0 0 6px; font-size:17px; }
+    .desc { font-size:12px; opacity:.86; margin-bottom:8px; }
+    .grid { display:grid; grid-template-columns:1fr auto; gap:6px 10px; align-items:center; font-size:12px; }
+    .grid input[type="range"] { grid-column:1 / -1; width:100%; margin:0 0 6px; accent-color:#59b6ff; }
     .stats { margin-top:8px; padding-top:8px; border-top:1px solid var(--line); font-size:12px; line-height:1.45; }
-    .tip { position:absolute; right:12px; bottom:12px; font-size:12px; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:rgba(8,16,28,.65); z-index:5; }
+    #records { margin-top:8px; max-height:180px; overflow:auto; white-space:pre; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:11px; background:rgba(8,14,24,.45); padding:8px; border:1px solid rgba(100,150,210,.25); border-radius:8px; }
+    .tip { position:absolute; right:12px; bottom:12px; z-index:5; font-size:12px; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:rgba(8,14,24,.65); }
   </style>
 </head>
 <body>
 <div id="app"></div>
 <section class="hud">
-  <h1>省级多河流动力学沙盘</h1>
-  <div class="sub">地形：西高东低 · 三条干支河网 · 坝前/坝后流量联动</div>
+  <h1>省域多站点河网-多闸门动力学沙盘</h1>
+  <div class="desc">西高东低 + 强起伏地形 · 河流按站点曲线连接 · 站点支持多入多出并记录数据</div>
   <div class="grid">
-    <label for="rain">区域降雨 (mm/h)</label><span id="rainV">36</span>
-    <input id="rain" type="range" min="0" max="120" step="1" value="36" />
-    <label for="temp">气温 (°C)</label><span id="tempV">24</span>
-    <input id="temp" type="range" min="-10" max="42" step="1" value="24" />
+    <label for="rain">区域降雨 (mm/h)</label><span id="rainV">44</span>
+    <input id="rain" type="range" min="0" max="150" value="44" />
+    <label for="temp">气温 (°C)</label><span id="tempV">22</span>
+    <input id="temp" type="range" min="-10" max="42" value="22" />
     <label for="wind">风速 (m/s)</label><span id="windV">5</span>
-    <input id="wind" type="range" min="0" max="20" step="1" value="5" />
-    <label for="gate">水坝闸门 (%)</label><span id="gateV">52</span>
-    <input id="gate" type="range" min="0" max="100" step="1" value="52" />
+    <input id="wind" type="range" min="0" max="20" value="5" />
+    <label for="gateA">闸门A（上游库）%</label><span id="gateAV">60</span>
+    <input id="gateA" type="range" min="0" max="100" value="60" />
+    <label for="gateB">闸门B（中游坝）%</label><span id="gateBV">45</span>
+    <input id="gateB" type="range" min="0" max="100" value="45" />
+    <label for="gateC">闸门C（支流闸）%</label><span id="gateCV">52</span>
+    <input id="gateC" type="range" min="0" max="100" value="52" />
   </div>
   <div class="stats">
-    <div>主河A/B/C流量: <strong id="rivers">0 / 0 / 0</strong> m³/s</div>
-    <div>全省总径流: <strong id="total">0</strong> m³/s</div>
-    <div>库区水位: <strong id="level">0</strong> m</div>
-    <div>坝前/坝后流速: <strong id="vel">0 / 0</strong> m/s</div>
-    <div>蒸发损失: <strong id="evap">0</strong> m³/s</div>
+    <div>总站点数: <strong id="stationCount">0</strong>，河段数: <strong id="edgeCount">0</strong></div>
+    <div>总入流: <strong id="totalIn">0</strong> m³/s，总出流: <strong id="totalOut">0</strong> m³/s</div>
+    <div>分支站 SPL1 出流比: <strong id="splitRatio">0 / 0</strong></div>
+    <div>闸前/闸后流速(中游坝): <strong id="vel">0 / 0</strong> m/s</div>
     <div>气候状态: <strong id="climate">--</strong></div>
   </div>
+  <div id="records"></div>
 </section>
-<div class="tip">拖拽旋转，观察“西高东低”地形与多河流演化</div>
+<div class="tip">拖拽旋转查看站点与河段网络，流量颜色：蓝低 → 红高</div>
 
-<script type="importmap">
-{
-  "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/"
-  }
-}
-</script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/"}}</script>
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 const root = document.getElementById('app');
-if (!window.WebGLRenderingContext) throw new Error('WebGL not supported');
-
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0a1727);
-scene.fog = new THREE.Fog(0x0a1727, 90, 290);
+scene.background = new THREE.Color(0x091425);
+scene.fog = new THREE.Fog(0x091425, 100, 320);
 
-const camera = new THREE.PerspectiveCamera(56, innerWidth / innerHeight, 0.1, 800);
-camera.position.set(70, 65, 105);
-
+const camera = new THREE.PerspectiveCamera(56, innerWidth / innerHeight, 0.1, 900);
+camera.position.set(85, 78, 120);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -73,188 +68,239 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 root.appendChild(renderer.domElement);
 
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(0, 8, 0);
+controls.target.set(0, 12, 0);
 controls.enableDamping = true;
 
-scene.add(new THREE.AmbientLight(0x97bdff, 0.55));
-const sun = new THREE.DirectionalLight(0xffffff, 1.25); sun.position.set(80, 90, 20); scene.add(sun);
+scene.add(new THREE.AmbientLight(0x9cc2ff, 0.56));
+const sun = new THREE.DirectionalLight(0xffffff, 1.3);
+sun.position.set(85, 110, 18);
+scene.add(sun);
 
-const sandbox = new THREE.Group(); scene.add(sandbox);
+const sandbox = new THREE.Group();
+scene.add(sandbox);
 
-const provinceSize = { x: 210, z: 120 }; // 沙盘比例化省域
-const terrainGeo = new THREE.PlaneGeometry(provinceSize.x, provinceSize.z, 170, 100);
+const provinceSize = { x: 240, z: 145 };
+const terrainGeo = new THREE.PlaneGeometry(provinceSize.x, provinceSize.z, 220, 130);
 terrainGeo.rotateX(-Math.PI / 2);
+const pos = terrainGeo.attributes.position;
 
-function ridge(x, z, x0, z0, sx, sz, amp) {
-  const dx = (x - x0) / sx, dz = (z - z0) / sz;
-  return amp * Math.exp(-(dx * dx + dz * dz));
+function bump(x, z, cx, cz, sx, sz, h) {
+  const dx = (x - cx) / sx;
+  const dz = (z - cz) / sz;
+  return h * Math.exp(-(dx * dx + dz * dz));
 }
 
-const p = terrainGeo.attributes.position;
-for (let i = 0; i < p.count; i++) {
-  const x = p.getX(i), z = p.getZ(i);
-  const westEastSlope = (1 - (x + provinceSize.x / 2) / provinceSize.x) * 28; // 西高东低
-  const northSouthUndulate = 2.2 * Math.sin(z * 0.11) + 1.4 * Math.sin(x * 0.08 + z * 0.05);
-  const westernMountains = ridge(x, z, -70, -20, 35, 25, 12) + ridge(x, z, -55, 25, 30, 20, 10);
-  const easternPlain = -2.5 * Math.exp(-Math.pow((x - 45) / 50, 2));
-  p.setY(i, westEastSlope + northSouthUndulate + westernMountains + easternPlain);
+for (let i = 0; i < pos.count; i++) {
+  const x = pos.getX(i), z = pos.getZ(i);
+  const slope = (1 - (x + provinceSize.x / 2) / provinceSize.x) * 33;
+  const waves = 3.3 * Math.sin(x * 0.11) + 2.8 * Math.sin(z * 0.17) + 1.5 * Math.sin(x * 0.21 + z * 0.16);
+  const ridges = bump(x, z, -92, -38, 28, 18, 16) + bump(x, z, -76, 30, 24, 16, 13) + bump(x, z, -40, -6, 22, 16, 10);
+  const valleys = -4.6 * Math.exp(-Math.pow((x - 52) / 48, 2)) - 2.7 * Math.exp(-Math.pow((z + 12) / 55, 2));
+  pos.setY(i, slope + waves + ridges + valleys);
 }
 terrainGeo.computeVertexNormals();
 
-const terrainMat = new THREE.MeshStandardMaterial({ color: 0x4e6375, roughness: 0.95, metalness: 0.05 });
-const terrain = new THREE.Mesh(terrainGeo, terrainMat);
-sandbox.add(terrain);
+sandbox.add(new THREE.Mesh(terrainGeo, new THREE.MeshStandardMaterial({ color: 0x556c80, roughness: 0.96, metalness: 0.04 })));
+const grid = new THREE.GridHelper(260, 26, 0x37506e, 0x24384d); grid.position.y = 0.2; sandbox.add(grid);
 
-const grid = new THREE.GridHelper(230, 23, 0x34506d, 0x233648);
-grid.position.y = 0.15;
-sandbox.add(grid);
+const stations = [
+  { id:'SRC_WN', name:'西北源', pos:[-108, 47, 34], type:'source' },
+  { id:'SRC_WS', name:'西南源', pos:[-108, 44, -34], type:'source' },
+  { id:'SRC_MW', name:'西部中源', pos:[-94, 36, -2], type:'source' },
+  { id:'GATE_A', name:'上游库闸A', pos:[-54, 30, 22], type:'gate', gate:'gateA' },
+  { id:'JN_1', name:'北支汇入站', pos:[-44, 27, 8], type:'junction' },
+  { id:'GATE_C', name:'南支闸C', pos:[-46, 23, -28], type:'gate', gate:'gateC' },
+  { id:'SPL1', name:'分流站SPL1', pos:[-8, 18, 0], type:'split', ratio:[0.52,0.30,0.18] },
+  { id:'MID_1', name:'东中站1', pos:[24, 14, 14], type:'normal' },
+  { id:'GATE_B', name:'中游坝闸B', pos:[42, 12, -4], type:'gate', gate:'gateB' },
+  { id:'MID_2', name:'东中站2', pos:[52, 10, 22], type:'normal' },
+  { id:'CON_1', name:'总汇站', pos:[70, 8, 4], type:'junction' },
+  { id:'OUT_E', name:'东部出境', pos:[106, 6, 2], type:'sink' }
+];
 
-const frame = new THREE.LineSegments(
-  new THREE.EdgesGeometry(new THREE.BoxGeometry(provinceSize.x, 1, provinceSize.z)),
-  new THREE.LineBasicMaterial({ color: 0x6f88a6, transparent: true, opacity: 0.5 })
-);
-frame.position.y = 0.6;
-sandbox.add(frame);
+const edges = [
+  { id:'e1', from:'SRC_WN', to:'GATE_A', lift:5 },
+  { id:'e2', from:'SRC_MW', to:'JN_1', lift:3 },
+  { id:'e3', from:'GATE_A', to:'JN_1', lift:3 },
+  { id:'e4', from:'SRC_WS', to:'GATE_C', lift:4 },
+  { id:'e5', from:'GATE_C', to:'SPL1', lift:3 },
+  { id:'e6', from:'JN_1', to:'SPL1', lift:2 },
+  { id:'e7', from:'SPL1', to:'MID_1', lift:2 },
+  { id:'e8', from:'SPL1', to:'GATE_B', lift:2 },
+  { id:'e9', from:'SPL1', to:'MID_2', lift:2 },
+  { id:'e10', from:'MID_1', to:'CON_1', lift:2 },
+  { id:'e11', from:'GATE_B', to:'CON_1', lift:2 },
+  { id:'e12', from:'MID_2', to:'CON_1', lift:2 },
+  { id:'e13', from:'CON_1', to:'OUT_E', lift:2 }
+];
 
-function riverPath(points) { return new THREE.CatmullRomCurve3(points.map(v => new THREE.Vector3(...v))); }
-const curves = {
-  A: riverPath([[-98, 35, -18], [-66, 28, -10], [-28, 20, -8], [9, 14, -5], [34, 11, -3], [65, 8, -2], [96, 6, -1]]),
-  B: riverPath([[-92, 33, 22], [-61, 27, 19], [-35, 22, 14], [-7, 17, 8], [26, 12, 4], [58, 9, 2], [94, 6, 1]]),
-  C: riverPath([[-88, 30, -38], [-59, 24, -31], [-29, 19, -26], [5, 14, -20], [33, 11, -14], [62, 8, -7], [92, 5, -3]])
-};
+const stationMap = Object.fromEntries(stations.map(s => [s.id, s]));
+const incoming = Object.fromEntries(stations.map(s => [s.id, []]));
+const outgoing = Object.fromEntries(stations.map(s => [s.id, []]));
+edges.forEach(e => { incoming[e.to].push(e.id); outgoing[e.from].push(e.id); });
 
-const riverMeshes = {};
-const riverStates = {
-  A: { q: 280, lag: Array.from({length: 90}, () => 0), idx: 0, area: 88 },
-  B: { q: 180, lag: Array.from({length: 90}, () => 0), idx: 0, area: 65 },
-  C: { q: 130, lag: Array.from({length: 90}, () => 0), idx: 0, area: 52 }
-};
+const stationState = Object.fromEntries(stations.map(s => [s.id, { q: 0, level: s.pos[1], history: [] }]));
+const edgeState = Object.fromEntries(edges.map(e => [e.id, { q: 0 }]));
 
-for (const [k, c] of Object.entries(curves)) {
-  const radius = k === 'A' ? 2.2 : k === 'B' ? 1.8 : 1.6;
-  const geo = new THREE.TubeGeometry(c, 280, radius, 18, false);
-  const mat = new THREE.MeshPhysicalMaterial({ color: 0x43aeff, transparent: true, opacity: 0.68, roughness: 0.22, transmission: 0.35, clearcoat: 0.55 });
-  const m = new THREE.Mesh(geo, mat);
-  sandbox.add(m);
-  riverMeshes[k] = m;
+function flowColor(q) {
+  const n = Math.max(0, Math.min(1, q / 340));
+  const c = new THREE.Color();
+  c.setHSL(0.60 - 0.58 * n, 0.85, 0.55);
+  return c;
 }
 
-const dam = new THREE.Group();
-const damWall = new THREE.Mesh(new THREE.BoxGeometry(2.2, 9, 14), new THREE.MeshStandardMaterial({ color: 0x8f97a3, roughness: 0.7 }));
-damWall.position.set(40, 15, -3);
-const gate = new THREE.Mesh(new THREE.BoxGeometry(0.8, 4.6, 6.8), new THREE.MeshStandardMaterial({ color: 0xcfd7df, metalness: 0.5, roughness: 0.4 }));
-gate.position.set(39.1, 13, -3);
-const spill = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.7, 8), new THREE.MeshBasicMaterial({ color: 0x40b8ff, transparent: true, opacity: 0.5 }));
-spill.position.set(42.1, 10.5, -3);
-dam.add(damWall, gate, spill); sandbox.add(dam);
-
-function sectionPlane(x, y, z, w, h) {
-  const mat = new THREE.MeshBasicMaterial({ color: 0x57eba8, transparent: true, opacity: 0.55, side: THREE.DoubleSide });
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
-  mesh.position.set(x, y, z); mesh.rotation.y = Math.PI / 2; sandbox.add(mesh); return mesh;
+const edgeMeshes = {};
+for (const e of edges) {
+  const a = stationMap[e.from].pos;
+  const b = stationMap[e.to].pos;
+  const c1 = new THREE.Vector3((a[0] * 2 + b[0]) / 3, (a[1] + b[1]) / 2 + e.lift, (a[2] * 2 + b[2]) / 3);
+  const c2 = new THREE.Vector3((a[0] + b[0] * 2) / 3, (a[1] + b[1]) / 2 + e.lift, (a[2] + b[2] * 2) / 3);
+  const curve = new THREE.CatmullRomCurve3([new THREE.Vector3(...a), c1, c2, new THREE.Vector3(...b)]);
+  const mesh = new THREE.Mesh(
+    new THREE.TubeGeometry(curve, 90, 1.25, 12, false),
+    new THREE.MeshPhysicalMaterial({ color: 0x49b6ff, transparent: true, opacity: .66, roughness:.22, transmission:.32, clearcoat:.5 })
+  );
+  sandbox.add(mesh);
+  edgeMeshes[e.id] = mesh;
 }
-const preDam = sectionPlane(35.8, 13, -3, 9.2, 5.5);
-const postDam = sectionPlane(45.2, 10.8, -3, 9.2, 4.4);
 
-const gaugeLevel = new THREE.Mesh(new THREE.BoxGeometry(1.8,1.8,1.8), new THREE.MeshStandardMaterial({ color: 0x9fefff, emissive: 0x12465c, emissiveIntensity: .5 }));
-const gaugeFlow = new THREE.Mesh(new THREE.BoxGeometry(1.8,1.8,1.8), new THREE.MeshStandardMaterial({ color: 0xffa163, emissive: 0x5e2d11, emissiveIntensity: .45 }));
-gaugeLevel.position.set(31, 9, -12); gaugeFlow.position.set(47, 9, -12); sandbox.add(gaugeLevel, gaugeFlow);
+for (const s of stations) {
+  const color = s.type === 'gate' ? 0xffbf66 : s.type === 'split' ? 0x9ff2ff : s.type === 'junction' ? 0x8cf7be : s.type === 'sink' ? 0xff7a7a : 0xc2d9ff;
+  const node = new THREE.Mesh(new THREE.SphereGeometry(1.8, 14, 14), new THREE.MeshStandardMaterial({ color, emissive: 0x15314a, emissiveIntensity: .45 }));
+  node.position.set(...s.pos);
+  sandbox.add(node);
+  if (s.type === 'gate') {
+    const gateBar = new THREE.Mesh(new THREE.BoxGeometry(1.1, 5.2, 2.8), new THREE.MeshStandardMaterial({ color: 0xcfd7df, metalness: .45, roughness: .42 }));
+    gateBar.position.set(s.pos[0] + 1.8, s.pos[1], s.pos[2]);
+    gateBar.userData.gateKey = s.gate;
+    sandbox.add(gateBar);
+    s.gateMesh = gateBar;
+  }
+}
 
 const ui = {
-  rain: document.getElementById('rain'), temp: document.getElementById('temp'), wind: document.getElementById('wind'), gate: document.getElementById('gate'),
-  rainV: document.getElementById('rainV'), tempV: document.getElementById('tempV'), windV: document.getElementById('windV'), gateV: document.getElementById('gateV'),
-  rivers: document.getElementById('rivers'), total: document.getElementById('total'), level: document.getElementById('level'), vel: document.getElementById('vel'), evap: document.getElementById('evap'), climate: document.getElementById('climate')
+  rain: document.getElementById('rain'), temp: document.getElementById('temp'), wind: document.getElementById('wind'),
+  gateA: document.getElementById('gateA'), gateB: document.getElementById('gateB'), gateC: document.getElementById('gateC'),
+  rainV: document.getElementById('rainV'), tempV: document.getElementById('tempV'), windV: document.getElementById('windV'),
+  gateAV: document.getElementById('gateAV'), gateBV: document.getElementById('gateBV'), gateCV: document.getElementById('gateCV'),
+  stationCount: document.getElementById('stationCount'), edgeCount: document.getElementById('edgeCount'),
+  totalIn: document.getElementById('totalIn'), totalOut: document.getElementById('totalOut'), splitRatio: document.getElementById('splitRatio'),
+  vel: document.getElementById('vel'), climate: document.getElementById('climate'), records: document.getElementById('records')
 };
-['rain','temp','wind','gate'].forEach(k => ui[k].addEventListener('input', ()=> ui[k+'V'].textContent = ui[k].value));
 
-const state = { reservoir: 12.6, outflow: 210, evap: 16, vPre: 1.2, vPost: 1.9 };
-const clock = new THREE.Clock();
+['rain','temp','wind','gateA','gateB','gateC'].forEach(k => ui[k].addEventListener('input', () => ui[k + 'V'].textContent = ui[k].value));
+ui.stationCount.textContent = stations.length;
+ui.edgeCount.textContent = edges.length;
+
 let t = 0;
+const clock = new THREE.Clock();
 
-const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
-function cLabel(r, temp) {
-  if (r > 80) return '季风暴雨';
-  if (r > 45) return temp > 30 ? '暖湿强对流' : '持续降雨';
-  if (temp < 0) return '低温少雨';
-  if (temp > 34) return '高温蒸发增强';
-  return '过渡性天气';
-}
-function velColor(v) {
-  const n = clamp((v - 0.3) / 3.8, 0, 1);
-  const c = new THREE.Color(); c.setHSL(0.40 - 0.40 * n, 0.85, 0.5); return c;
+const topoOrder = ['SRC_WN','SRC_WS','SRC_MW','GATE_A','JN_1','GATE_C','SPL1','MID_1','GATE_B','MID_2','CON_1','OUT_E'];
+
+function climateLabel(r, temp) {
+  if (r > 95) return '暴雨洪峰过程';
+  if (r > 55) return temp > 30 ? '暖湿强对流' : '持续强降雨';
+  if (temp < 0) return '低温融雪偏弱';
+  if (temp > 35) return '高温蒸发增强';
+  return '平稳过渡天气';
 }
 
-function updateRiver(name, rainWest, rainEast, temp, dt) {
-  const rs = riverStates[name];
-  const orographic = name === 'A' ? 1.22 : name === 'B' ? 1.0 : 0.88;
-  const effectiveRain = (rainWest * 0.62 + rainEast * 0.38) * orographic;
-  const runoff = effectiveRain / 1000 / 3600 * (1.4e6 + rs.area * 3000) * clamp(0.24 + effectiveRain / 260, 0.2, 0.75);
-  rs.lag[rs.idx] = runoff;
-  const qLag = rs.lag[(rs.idx + 90 - 14) % 90] * 0.5 + rs.lag[(rs.idx + 90 - 36) % 90] * 0.33 + rs.lag[(rs.idx + 90 - 60) % 90] * 0.17;
-  rs.idx = (rs.idx + 1) % 90;
-  const snowmelt = Math.max(0, temp - 6) * (name === 'A' ? 2.3 : 1.6);
-  rs.q += (qLag + snowmelt - rs.q) * Math.min(1, dt * (name === 'A' ? 0.42 : 0.36));
-}
-
-function tick(dt) {
+function simulate(dt) {
   t += dt;
-  const rain = Number(ui.rain.value), temp = Number(ui.temp.value), wind = Number(ui.wind.value), gateOpen = Number(ui.gate.value)/100;
-  const westBoost = rain * (1.15 + 0.08 * Math.sin(t * 0.14));
-  const eastRain = rain * (0.72 + 0.06 * Math.sin(t * 0.08 + .9));
+  const rain = Number(ui.rain.value), temp = Number(ui.temp.value), wind = Number(ui.wind.value);
+  const gates = { gateA: Number(ui.gateA.value) / 100, gateB: Number(ui.gateB.value) / 100, gateC: Number(ui.gateC.value) / 100 };
+  const westRain = rain * (1.2 + 0.12 * Math.sin(t * 0.14));
+  const eastRain = rain * (0.68 + 0.09 * Math.sin(t * 0.09 + .8));
 
-  updateRiver('A', westBoost, eastRain, temp, dt);
-  updateRiver('B', westBoost * 0.92, eastRain, temp, dt);
-  updateRiver('C', westBoost * 0.82, eastRain * 1.06, temp, dt);
+  const stationOutMap = {};
+  let totalIn = 0;
+  let totalOut = 0;
 
-  const qa = riverStates.A.q, qb = riverStates.B.q, qc = riverStates.C.q;
-  const totalIn = qa + qb + qc;
-  state.evap += (clamp((temp - 2) * 0.7 + wind * 0.9, 1, 56) - state.evap) * Math.min(1, dt * 0.35);
+  for (const sid of topoOrder) {
+    const s = stationMap[sid];
+    const ss = stationState[sid];
 
-  const targetOut = 64 + gateOpen * 340 + Math.max(0, state.reservoir - 8) * 8.5;
-  state.outflow += (targetOut - state.outflow) * Math.min(1, dt * 0.58);
-  state.reservoir = clamp(state.reservoir + (qa * 0.78 + qb * 0.2 - state.outflow - state.evap) * dt / 1400, 6.2, 24);
+    const inQ = incoming[sid].reduce((sum, eid) => sum + edgeState[eid].q, 0);
+    const elevFactor = Math.max(0.45, Math.min(1.45, s.pos[1] / 40));
+    const localRain = (s.pos[0] < -20 ? westRain : eastRain) * (0.8 + 0.4 * elevFactor);
+    const localRunoff = localRain / 1000 / 3600 * (180000 + 9000 * elevFactor) * (0.24 + localRain / 380);
+    const melt = Math.max(0, temp - 7) * (s.pos[1] > 20 ? 1.2 : 0.45);
 
-  const areaPre = 80 + state.reservoir * 4.5;
-  const areaPost = 28 + gateOpen * 18;
-  state.vPre += ((qa * 0.78 + qb * 0.2) / areaPre - state.vPre) * Math.min(1, dt * 0.5);
-  state.vPost += (state.outflow / areaPost - state.vPost) * Math.min(1, dt * 0.66);
+    let outTotal = 0;
+    const avail = inQ + localRunoff + melt;
+    const outEdges = outgoing[sid];
 
-  preDam.material.color.copy(velColor(state.vPre));
-  postDam.material.color.copy(velColor(state.vPost));
-  preDam.material.opacity = 0.35 + clamp(state.vPre / 4.5, 0, .45);
-  postDam.material.opacity = 0.35 + clamp(state.vPost / 4.5, 0, .45);
+    if (s.type === 'source') {
+      outTotal = avail;
+    } else if (s.type === 'gate') {
+      const open = gates[s.gate];
+      const cap = 20 + open * (240 + s.pos[1] * 2.4);
+      ss.level += (avail - Math.min(avail, cap)) * dt * 0.004;
+      ss.level = Math.max(s.pos[1] - 2.2, Math.min(s.pos[1] + 8.5, ss.level));
+      outTotal = Math.min(avail + Math.max(0, ss.level - s.pos[1]) * 4.2, cap + 30);
+      if (s.gateMesh) s.gateMesh.position.y = s.pos[1] - 1.8 + open * 5.2;
+    } else if (s.type === 'split') {
+      outTotal = avail * (0.92 - wind * 0.003);
+    } else if (s.type === 'sink') {
+      outTotal = 0;
+    } else {
+      outTotal = avail * 0.95;
+    }
 
-  const levelN = (state.reservoir - 6.2) / (24 - 6.2);
-  gate.position.y = 11.5 + gateOpen * 3.3;
-  spill.scale.y = 0.4 + gateOpen * 2.4;
-  spill.position.y = 9.5 + levelN * 3.2;
-  gaugeLevel.scale.y = 0.6 + levelN * 4.2; gaugeLevel.position.y = 8.2 + gaugeLevel.scale.y;
-  gaugeFlow.scale.y = 0.6 + clamp(state.outflow / 420, 0, 1.2) * 4; gaugeFlow.position.y = 8.2 + gaugeFlow.scale.y;
+    totalIn += inQ;
+    totalOut += outTotal;
+    ss.q += (avail - ss.q) * Math.min(1, dt * 0.65);
 
-  const flowSpeed = clamp((state.vPre + state.vPost) / 2.2, 0.25, 2.8);
-  Object.entries(riverMeshes).forEach(([k,m]) => {
-    const q = riverStates[k].q;
-    m.material.opacity = 0.48 + clamp(q / 480, 0, .35);
-    m.scale.y = 0.72 + clamp(q / 430, 0.2, 1.6) * 0.5;
-    m.material.color.setHSL(0.57 - clamp(q / 560, 0, .2), 0.8, 0.58);
-    m.rotation.y = Math.sin(t * 0.01 + q * 0.0008) * 0.002 * flowSpeed;
-  });
+    if (outEdges.length === 0) {
+      stationOutMap[sid] = {};
+    } else if (s.type === 'split' && outEdges.length >= 3) {
+      const ratio = s.ratio;
+      stationOutMap[sid] = { [outEdges[0]]: outTotal * ratio[0], [outEdges[1]]: outTotal * ratio[1], [outEdges[2]]: outTotal * ratio[2] };
+    } else if (outEdges.length > 1) {
+      const each = outTotal / outEdges.length;
+      stationOutMap[sid] = Object.fromEntries(outEdges.map(eid => [eid, each]));
+    } else {
+      stationOutMap[sid] = { [outEdges[0]]: outTotal };
+    }
 
-  ui.rivers.textContent = `${qa.toFixed(1)} / ${qb.toFixed(1)} / ${qc.toFixed(1)}`;
-  ui.total.textContent = totalIn.toFixed(1);
-  ui.level.textContent = state.reservoir.toFixed(2);
-  ui.vel.textContent = `${state.vPre.toFixed(2)} / ${state.vPost.toFixed(2)}`;
-  ui.evap.textContent = state.evap.toFixed(1);
-  ui.climate.textContent = cLabel(rain, temp);
+    ss.history.push({ t, inQ, out: outTotal, level: ss.level });
+    if (ss.history.length > 120) ss.history.shift();
+  }
 
-  const skyMix = clamp((rain * 0.012 + temp * 0.018), 0, 1);
-  scene.background = new THREE.Color().setHSL(0.58 - skyMix * 0.12, 0.44, 0.11 + skyMix * 0.09);
-  sun.intensity = 1.4 - clamp(rain / 120, 0, .9);
+  for (const e of edges) {
+    const target = stationOutMap[e.from]?.[e.id] ?? 0;
+    edgeState[e.id].q += (target - edgeState[e.id].q) * Math.min(1, dt * 0.62);
+    const mesh = edgeMeshes[e.id];
+    mesh.material.color.copy(flowColor(edgeState[e.id].q));
+    mesh.material.opacity = 0.42 + Math.min(0.5, edgeState[e.id].q / 620);
+    mesh.scale.y = 0.72 + Math.min(1.2, edgeState[e.id].q / 520) * 0.58;
+  }
+
+  const qPre = edgeState.e8.q;
+  const qPost = edgeState.e11.q;
+  const vPre = qPre / (28 + Number(ui.gateB.value) * 0.2);
+  const vPost = qPost / (16 + Number(ui.gateB.value) * 0.12);
+
+  ui.totalIn.textContent = totalIn.toFixed(1);
+  ui.totalOut.textContent = totalOut.toFixed(1);
+  ui.splitRatio.textContent = `${(edgeState.e7.q).toFixed(1)} / ${(edgeState.e8.q).toFixed(1)} / ${(edgeState.e9.q).toFixed(1)}`;
+  ui.vel.textContent = `${vPre.toFixed(2)} / ${vPost.toFixed(2)}`;
+  ui.climate.textContent = climateLabel(rain, temp);
+
+  const focusStations = ['GATE_A','SPL1','GATE_B','CON_1','OUT_E'];
+  ui.records.textContent = focusStations.map(id => {
+    const rec = stationState[id].history.at(-1);
+    return `${id.padEnd(7)} in:${(rec?.inQ ?? 0).toFixed(1).padStart(6)} out:${(rec?.out ?? 0).toFixed(1).padStart(6)} level:${(rec?.level ?? stationMap[id].pos[1]).toFixed(2).padStart(6)}`;
+  }).join('\n');
+
+  const skyMix = Math.max(0, Math.min(1, rain * 0.008 + temp * 0.02));
+  scene.background = new THREE.Color().setHSL(0.58 - skyMix * 0.13, 0.45, 0.1 + skyMix * 0.08);
+  sun.intensity = 1.38 - Math.min(0.92, rain / 150);
 }
 
 function animate() {
-  const dt = Math.min(0.05, clock.getDelta()) * 8.4;
-  tick(dt);
+  const dt = Math.min(0.05, clock.getDelta()) * 8.2;
+  simulate(dt);
   controls.update();
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
