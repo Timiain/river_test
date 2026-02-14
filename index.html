@@ -72,6 +72,18 @@
       <button id="addStationBtn" type="button">添加站点（自动贴地）</button>
     </div>
   </div>
+
+  <div class="panel">
+    <h3>地形修改（拔高 / 下降）</h3>
+    <div class="grid">
+      <label for="terrainEditToggle">启用地形编辑</label><span>开启后拖拽地表即可修改</span><input id="terrainEditToggle" type="checkbox" />
+      <label for="terrainAction">修改动作</label>
+      <select id="terrainAction"><option value="raise">拔高</option><option value="lower">下降</option></select>
+      <label for="terrainRadius">影响半径</label><input id="terrainRadius" type="range" min="2" max="20" value="8" step="0.5" />
+      <label for="terrainStrength">强度</label><input id="terrainStrength" type="range" min="0.2" max="3" value="1" step="0.1" />
+    </div>
+  </div>
+
 </section>
 <div class="tip">Shift+点击多选 · 拖动站点 · 流量/水位色域映射 · 红色!超警戒</div>
 
@@ -163,7 +175,7 @@ let edges = [
 
 let stationMeshById = new Map(), edgeMeshById = new Map(), gateMeshById = new Map(), alarmMeshById = new Map();
 let stationMap = {}, incoming = {}, outgoing = {}, stationState = {}, edgeState = {};
-let selectedStationId = null, draggingStationId = null;
+let selectedStationId = null, draggingStationId = null, terrainEditing = false;
 const multiSelected = [];
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
@@ -252,7 +264,7 @@ const ui = {
   gateAV: document.getElementById('gateAV'), gateBV: document.getElementById('gateBV'), gateCV: document.getElementById('gateCV'),
   stationCount: document.getElementById('stationCount'), edgeCount: document.getElementById('edgeCount'), totalIn: document.getElementById('totalIn'), totalOut: document.getElementById('totalOut'), splitRatio: document.getElementById('splitRatio'), vel: document.getElementById('vel'), climate: document.getElementById('climate'), records: document.getElementById('records'), alarmCount: document.getElementById('alarmCount'),
   stationInfo: document.getElementById('stationInfo'), boundaryLevel: document.getElementById('boundaryLevel'), setBoundaryBtn: document.getElementById('setBoundaryBtn'), edgeFrom: document.getElementById('edgeFrom'), edgeTo: document.getElementById('edgeTo'), edgeLift: document.getElementById('edgeLift'), addEdgeBtn: document.getElementById('addEdgeBtn'), connectSelectedBtn: document.getElementById('connectSelectedBtn'),
-  newId: document.getElementById('newId'), newName: document.getElementById('newName'), newType: document.getElementById('newType'), newX: document.getElementById('newX'), newZ: document.getElementById('newZ'), addStationBtn: document.getElementById('addStationBtn'), satelliteToggle: document.getElementById('satelliteToggle')
+  newId: document.getElementById('newId'), newName: document.getElementById('newName'), newType: document.getElementById('newType'), newX: document.getElementById('newX'), newZ: document.getElementById('newZ'), addStationBtn: document.getElementById('addStationBtn'), satelliteToggle: document.getElementById('satelliteToggle'), terrainEditToggle: document.getElementById('terrainEditToggle'), terrainAction: document.getElementById('terrainAction'), terrainRadius: document.getElementById('terrainRadius'), terrainStrength: document.getElementById('terrainStrength')
 };
 ['rain', 'temp', 'wind', 'gateA', 'gateB', 'gateC'].forEach(k => ui[k].addEventListener('input', () => ui[k + 'V'].textContent = ui[k].value));
 ui.satelliteToggle.addEventListener('change', () => setSatelliteLayer(ui.satelliteToggle.checked));
@@ -417,6 +429,40 @@ ui.connectSelectedBtn.addEventListener('click', () => {
   showStationInfo(multiSelected[multiSelected.length - 1]);
 });
 
+
+function refreshTerrainAfterEdit() {
+  terrainGeo.computeVertexNormals();
+  terrainGeo.attributes.position.needsUpdate = true;
+  terrainGeo.attributes.normal.needsUpdate = true;
+  for (const s of stations) {
+    s.y = terrainHeight(s.x, s.z) + stationLift;
+    if (stationState[s.id]) stationState[s.id].level = Math.max(stationState[s.id].level, s.y);
+    if (s.boundaryLevel < s.y + 1.5) s.boundaryLevel = s.y + 1.5;
+  }
+  if (satelliteTexture) {
+    satelliteTexture.dispose();
+    satelliteTexture = null;
+    if (ui.satelliteToggle.checked) setSatelliteLayer(true);
+  }
+  buildMeshes();
+}
+
+function editTerrainAt(x, z) {
+  const radius = Number(ui.terrainRadius.value);
+  const strength = Number(ui.terrainStrength.value);
+  const sign = ui.terrainAction.value === 'raise' ? 1 : -1;
+  const arr = terrainPos.array;
+  for (let i = 0; i < terrainPos.count; i++) {
+    const ix = arr[i * 3], iz = arr[i * 3 + 2];
+    const dx = ix - x, dz = iz - z;
+    const d = Math.hypot(dx, dz);
+    if (d > radius) continue;
+    const falloff = Math.exp(-(d * d) / (radius * radius * 0.45));
+    arr[i * 3 + 1] += sign * strength * 0.18 * falloff;
+  }
+  refreshTerrainAfterEdit();
+}
+
 function pointerToNDC(ev) {
   const r = renderer.domElement.getBoundingClientRect();
   mouse.x = ((ev.clientX - r.left) / r.width) * 2 - 1;
@@ -426,6 +472,17 @@ function pointerToNDC(ev) {
 renderer.domElement.addEventListener('pointerdown', ev => {
   pointerToNDC(ev);
   raycaster.setFromCamera(mouse, camera);
+
+  if (ui.terrainEditToggle.checked) {
+    const groundHit = raycaster.intersectObject(terrainMesh)[0];
+    if (groundHit) {
+      terrainEditing = true;
+      controls.enabled = false;
+      editTerrainAt(groundHit.point.x, groundHit.point.z);
+      return;
+    }
+  }
+
   const hit = raycaster.intersectObjects([...stationMeshById.values()])[0];
   if (!hit?.object?.userData?.stationId) return;
   const sid = hit.object.userData.stationId;
@@ -445,9 +502,16 @@ renderer.domElement.addEventListener('pointerdown', ev => {
 });
 
 renderer.domElement.addEventListener('pointermove', ev => {
-  if (!draggingStationId) return;
   pointerToNDC(ev);
   raycaster.setFromCamera(mouse, camera);
+
+  if (terrainEditing && ui.terrainEditToggle.checked) {
+    const groundHit = raycaster.intersectObject(terrainMesh)[0];
+    if (groundHit) editTerrainAt(groundHit.point.x, groundHit.point.z);
+    return;
+  }
+
+  if (!draggingStationId) return;
   const p = new THREE.Vector3();
   if (raycaster.ray.intersectPlane(dragPlane, p)) {
     const s = stationMap[draggingStationId];
@@ -461,7 +525,7 @@ renderer.domElement.addEventListener('pointermove', ev => {
   }
 });
 
-function endDrag() { draggingStationId = null; controls.enabled = true; }
+function endDrag() { draggingStationId = null; terrainEditing = false; controls.enabled = true; }
 renderer.domElement.addEventListener('pointerup', endDrag);
 renderer.domElement.addEventListener('pointerleave', endDrag);
 
