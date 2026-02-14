@@ -135,24 +135,49 @@ for (let i = 0; i < 14; i++) {
 const sandbox = new THREE.Group();
 scene.add(sandbox);
 const provinceSize = { x: 245, z: 150 };
-const terrainGeo = new THREE.PlaneGeometry(provinceSize.x, provinceSize.z, 240, 150);
+const terrainSegX = 240, terrainSegZ = 150;
+const terrainGeo = new THREE.PlaneGeometry(provinceSize.x, provinceSize.z, terrainSegX, terrainSegZ);
 terrainGeo.rotateX(-Math.PI / 2);
 const terrainPos = terrainGeo.attributes.position;
 
 const bump = (x, z, cx, cz, sx, sz, h) => h * Math.exp(-(((x - cx) / sx) ** 2 + ((z - cz) / sz) ** 2));
-function terrainHeight(x, z) {
+function proceduralTerrainHeight(x, z) {
   const slope = (1 - (x + provinceSize.x / 2) / provinceSize.x) * 34;
   const waves = 4.2 * Math.sin(x * 0.12) + 3.5 * Math.sin(z * 0.18) + 2.4 * Math.sin(x * 0.25 + z * 0.14) + 1.6 * Math.sin(z * 0.32 - x * 0.1);
   const ridges = bump(x, z, -95, -40, 24, 16, 18) + bump(x, z, -78, 28, 20, 14, 15) + bump(x, z, -45, -8, 22, 16, 12) + bump(x, z, -15, 35, 26, 18, 7);
   const valleys = -6.2 * Math.exp(-(((x - 56) / 48) ** 2)) - 3.2 * Math.exp(-(((z + 6) / 50) ** 2));
   return slope + waves + ridges + valleys;
 }
-for (let i = 0; i < terrainPos.count; i++) terrainPos.setY(i, terrainHeight(terrainPos.getX(i), terrainPos.getZ(i)));
+for (let i = 0; i < terrainPos.count; i++) terrainPos.setY(i, proceduralTerrainHeight(terrainPos.getX(i), terrainPos.getZ(i)));
 terrainGeo.computeVertexNormals();
 const terrainMaterial = new THREE.MeshStandardMaterial({ color: 0x576f84, roughness: .96, metalness: .03 });
 const terrainMesh = new THREE.Mesh(terrainGeo, terrainMaterial);
 sandbox.add(terrainMesh);
 const grid = new THREE.GridHelper(270, 27, 0x36506d, 0x223648); grid.position.y = .2; sandbox.add(grid);
+
+const terrainDx = provinceSize.x / terrainSegX;
+const terrainDz = provinceSize.z / terrainSegZ;
+const terrainRow = terrainSegX + 1;
+function terrainYAtIndex(ix, iz) {
+  const cx = Math.max(0, Math.min(terrainSegX, ix));
+  const cz = Math.max(0, Math.min(terrainSegZ, iz));
+  return terrainPos.array[(cz * terrainRow + cx) * 3 + 1];
+}
+function terrainHeight(x, z) {
+  const fx = (x + provinceSize.x / 2) / terrainDx;
+  const fz = (z + provinceSize.z / 2) / terrainDz;
+  const x0 = Math.floor(Math.max(0, Math.min(terrainSegX, fx)));
+  const z0 = Math.floor(Math.max(0, Math.min(terrainSegZ, fz)));
+  const x1 = Math.min(terrainSegX, x0 + 1);
+  const z1 = Math.min(terrainSegZ, z0 + 1);
+  const tx = Math.max(0, Math.min(1, fx - x0));
+  const tz = Math.max(0, Math.min(1, fz - z0));
+  const y00 = terrainYAtIndex(x0, z0), y10 = terrainYAtIndex(x1, z0);
+  const y01 = terrainYAtIndex(x0, z1), y11 = terrainYAtIndex(x1, z1);
+  const y0 = y00 * (1 - tx) + y10 * tx;
+  const y1 = y01 * (1 - tx) + y11 * tx;
+  return y0 * (1 - tz) + y1 * tz;
+}
 
 const clearance = 1.35;
 const stationLift = 1.9;
@@ -374,7 +399,7 @@ function updateSelectionHighlight() {
   }
 }
 
-function showStationInfo(id) {
+function showStationInfo(id, syncInput = true) {
   selectedStationId = id;
   updateSelectionHighlight();
   const s = stationMap[id];
@@ -383,7 +408,7 @@ function showStationInfo(id) {
   const rec = stationState[id]?.history.at(-1);
   ui.stationInfo.textContent = `${s.id} ${s.name}\n类型:${s.type}\n坐标:(${s.x.toFixed(1)}, ${s.y.toFixed(1)}, ${s.z.toFixed(1)})\n输入河段:${ins}\n输出河段:${outs}\n当前入流:${(rec?.inQ ?? 0).toFixed(1)}  当前出流:${(rec?.out ?? 0).toFixed(1)}\n水位:${(rec?.level ?? s.y).toFixed(2)} 警戒:${s.boundaryLevel.toFixed(2)}`;
   ui.edgeFrom.value = id;
-  ui.boundaryLevel.value = s.boundaryLevel.toFixed(2);
+  if (syncInput && document.activeElement !== ui.boundaryLevel) ui.boundaryLevel.value = s.boundaryLevel.toFixed(2);
 }
 
 rebuildGraph(); buildMeshes(); refreshSelectors(); showStationInfo(stations[0].id);
@@ -437,7 +462,6 @@ function refreshTerrainAfterEdit() {
   for (const s of stations) {
     s.y = terrainHeight(s.x, s.z) + stationLift;
     if (stationState[s.id]) stationState[s.id].level = Math.max(stationState[s.id].level, s.y);
-    if (s.boundaryLevel < s.y + 1.5) s.boundaryLevel = s.y + 1.5;
   }
   if (satelliteTexture) {
     satelliteTexture.dispose();
@@ -519,7 +543,6 @@ renderer.domElement.addEventListener('pointermove', ev => {
     s.z = Math.max(-provinceSize.z / 2 + 2, Math.min(provinceSize.z / 2 - 2, p.z));
     s.y = terrainHeight(s.x, s.z) + stationLift;
     if (stationState[s.id]) stationState[s.id].level = s.y;
-    if (s.boundaryLevel < s.y + 1.5) s.boundaryLevel = s.y + 1.5;
     buildMeshes();
     showStationInfo(s.id);
   }
@@ -630,7 +653,7 @@ function simulate(dt) {
     return `${id.padEnd(7)} in:${(rec?.inQ ?? 0).toFixed(1).padStart(6)} out:${(rec?.out ?? 0).toFixed(1).padStart(6)} level:${(rec?.level ?? s.y).toFixed(2).padStart(6)}${mark}`;
   }).join('\n');
 
-  if (selectedStationId && stationMap[selectedStationId]) showStationInfo(selectedStationId);
+  if (selectedStationId && stationMap[selectedStationId]) showStationInfo(selectedStationId, false);
   const skyMix = Math.max(0, Math.min(1, rain * .008 + temp * .02));
   scene.background = new THREE.Color().setHSL(.58 - skyMix * .13, .45, .1 + skyMix * .08);
   sun.intensity = 1.38 - Math.min(.92, rain / 150);
