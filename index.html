@@ -81,6 +81,10 @@ scene.fog = new THREE.Fog(0x091425, 100, 340);
 const camera = new THREE.PerspectiveCamera(56, innerWidth/innerHeight, .1, 900);
 camera.position.set(90, 82, 125);
 const renderer = new THREE.WebGLRenderer({antialias:true});
+if (!renderer.getContext()) {
+  document.getElementById('app').innerHTML = '<div style="padding:20px;color:#fff">WebGL 初始化失败，请检查浏览器图形加速设置。</div>';
+  throw new Error('WebGL context unavailable');
+}
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(2, devicePixelRatio));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -102,7 +106,7 @@ function terrainHeight(x,z){
   const slope = (1 - (x + provinceSize.x/2)/provinceSize.x)*34;
   const waves = 4.2*Math.sin(x*0.12)+3.5*Math.sin(z*0.18)+2.4*Math.sin(x*0.25+z*0.14)+1.6*Math.sin(z*0.32-x*0.1);
   const ridges = bump(x,z,-95,-40,24,16,18)+bump(x,z,-78,28,20,14,15)+bump(x,z,-45,-8,22,16,12)+bump(x,z,-15,35,26,18,7);
-  const valleys = -6.2*Math.exp(-((x-56)/48)**2) - 3.2*Math.exp(-((z+6)/50)**2);
+  const valleys = -6.2 * Math.exp(-(((x - 56) / 48) ** 2)) - 3.2 * Math.exp(-(((z + 6) / 50) ** 2));
   return slope + waves + ridges + valleys;
 }
 for(let i=0;i<terrainPos.count;i++){ terrainPos.setY(i, terrainHeight(terrainPos.getX(i), terrainPos.getZ(i))); }
