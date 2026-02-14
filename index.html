@@ -144,11 +144,25 @@
 
   <div class="tip">拖拽旋转 · 滚轮缩放 · 实时动力学更新</div>
 
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/"
+      }
+    }
+  </script>
+
   <script type="module">
-    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js';
-    import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/controls/OrbitControls.js';
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
     const root = document.getElementById('app');
+
+    if (!window.WebGLRenderingContext) {
+      root.innerHTML = '<div style="padding:24px;color:#fff">当前浏览器不支持 WebGL，无法渲染 3D 场景。</div>';
+      throw new Error('WebGL not supported');
+    }
     const scene = new THREE.Scene();
     scene.fog = new THREE.Fog(0x0a1726, 55, 190);
 
@@ -156,6 +170,10 @@
     camera.position.set(34, 28, 46);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
+    if (!renderer.getContext()) {
+      root.innerHTML = '<div style="padding:24px;color:#fff">WebGL 初始化失败，请检查显卡或浏览器设置。</div>';
+      throw new Error('WebGL init failed');
+    }
     renderer.setSize(innerWidth, innerHeight);
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
